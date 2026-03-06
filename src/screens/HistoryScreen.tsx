@@ -2,7 +2,7 @@
 // Экран «История» — список тренировок
 // ==========================================
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -52,7 +52,6 @@ function formatShortDate(isoString: string): string {
 function formatWeekday(isoString: string): string {
   const date = new Date(isoString);
   const weekday = date.toLocaleDateString('ru-RU', { weekday: 'short' });
-  // Capitalize first letter
   return weekday.charAt(0).toUpperCase() + weekday.slice(1);
 }
 
@@ -95,8 +94,8 @@ function avgWeightDisplay(before: number | null, after: number | null): string {
 // ---- Group sessions by month ----
 
 interface MonthGroup {
-  key: string;       // "2026-03" for sorting
-  label: string;     // "Март 2026"
+  key: string;
+  label: string;
   sessions: WorkoutSession[];
 }
 
@@ -106,7 +105,7 @@ function groupByMonth(sessions: WorkoutSession[]): MonthGroup[] {
   for (const session of sessions) {
     const date = new Date(session.date);
     const year = date.getFullYear();
-    const month = date.getMonth(); // 0-based
+    const month = date.getMonth();
     const key = `${year}-${String(month + 1).padStart(2, '0')}`;
 
     if (!map.has(key)) {
@@ -114,7 +113,6 @@ function groupByMonth(sessions: WorkoutSession[]): MonthGroup[] {
         month: 'long',
         year: 'numeric',
       });
-      // Capitalize first letter
       const capitalizedLabel = label.charAt(0).toUpperCase() + label.slice(1);
       map.set(key, { key, label: capitalizedLabel, sessions: [] });
     }
@@ -122,7 +120,6 @@ function groupByMonth(sessions: WorkoutSession[]): MonthGroup[] {
     map.get(key)!.sessions.push(session);
   }
 
-  // Already sorted by date DESC from DB, so groups are in order
   return Array.from(map.values());
 }
 
@@ -143,12 +140,9 @@ function WorkoutRow({ session, dayTypeName, onPress }: WorkoutRowProps) {
       onPress={onPress}
       activeOpacity={0.7}
     >
-      {/* Left color strip */}
       <View style={[rowStyles.colorStrip, { backgroundColor: accentColor }]} />
 
-      {/* Main content */}
       <View style={rowStyles.content}>
-        {/* Top row: day type name + date */}
         <View style={rowStyles.topRow}>
           <Text style={[rowStyles.dayName, { color: accentColor }]}>
             {dayTypeName}
@@ -158,7 +152,6 @@ function WorkoutRow({ session, dayTypeName, onPress }: WorkoutRowProps) {
           </Text>
         </View>
 
-        {/* Bottom row: stats */}
         <View style={rowStyles.statsRow}>
           <View style={rowStyles.stat}>
             <MaterialCommunityIcons
@@ -201,7 +194,6 @@ function WorkoutRow({ session, dayTypeName, onPress }: WorkoutRowProps) {
         </View>
       </View>
 
-      {/* Chevron */}
       <MaterialCommunityIcons
         name="chevron-right"
         size={24}
@@ -272,6 +264,9 @@ export default function HistoryScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  // Track whether we've done the initial load
+  const hasLoaded = useRef(false);
+
   const loadSessions = useCallback(async () => {
     try {
       const all = await workoutRepo.getAllSessions();
@@ -281,11 +276,20 @@ export default function HistoryScreen() {
     }
   }, []);
 
-  // Load on focus
+  // Load on focus: show spinner only on first load, then refresh silently
   useFocusEffect(
     useCallback(() => {
-      setIsLoading(true);
-      loadSessions().finally(() => setIsLoading(false));
+      if (!hasLoaded.current) {
+        // First load — show spinner
+        setIsLoading(true);
+        loadSessions().finally(() => {
+          setIsLoading(false);
+          hasLoaded.current = true;
+        });
+      } else {
+        // Returning to screen — refresh data silently without hiding the list
+        loadSessions();
+      }
     }, [loadSessions])
   );
 
@@ -400,7 +404,6 @@ export default function HistoryScreen() {
           }
           renderItem={({ item: group }) => (
             <View style={styles.monthGroup}>
-              {/* Month header */}
               <View style={styles.monthHeader}>
                 <Text style={styles.monthLabel}>{group.label}</Text>
                 <Text style={styles.monthCount}>
@@ -413,7 +416,6 @@ export default function HistoryScreen() {
                 </Text>
               </View>
 
-              {/* Sessions in this month */}
               <View style={styles.monthSessions}>
                 {group.sessions.map((session) => (
                   <WorkoutRow
