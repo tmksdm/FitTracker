@@ -21,8 +21,8 @@ export const CREATE_TABLES_SQL = `
     has_added_weight INTEGER NOT NULL DEFAULT 1,
     working_weight REAL,
     weight_increment REAL NOT NULL DEFAULT 2.5,
-    warmup_1_offset REAL DEFAULT 20,
-    warmup_2_offset REAL DEFAULT 10,
+    warmup_1_percent REAL DEFAULT 60,
+    warmup_2_percent REAL DEFAULT 80,
     warmup_1_reps INTEGER NOT NULL DEFAULT 12,
     warmup_2_reps INTEGER NOT NULL DEFAULT 10,
     max_reps_per_set INTEGER NOT NULL DEFAULT 8,
@@ -94,7 +94,52 @@ export const CREATE_TABLES_SQL = `
 // Начальные данные — три типа дней
 export const SEED_DAY_TYPES_SQL = `
   INSERT OR IGNORE INTO day_types (id, name, name_ru, current_direction) VALUES
-    (1, 'Legs',  'День ног',           'normal'),
-    (2, 'Back',  'День становой тяги', 'normal'),
-    (3, 'Bench', 'День жима',          'normal');
+    (1, 'Squat', 'Присед', 'normal'),
+    (2, 'Pull',  'Тяга',   'normal'),
+    (3, 'Bench', 'Жим',    'normal');
+`;
+
+// Seed-упражнения для тестирования (День приседа)
+// Фиксированные UUID чтобы INSERT OR IGNORE работал идемпотентно
+export const SEED_EXERCISES_SQL = `
+  INSERT OR IGNORE INTO exercises
+    (id, day_type_id, name, sort_order, has_added_weight,
+     working_weight, weight_increment, warmup_1_percent, warmup_2_percent,
+     warmup_1_reps, warmup_2_reps, max_reps_per_set, min_reps_per_set,
+     num_working_sets, is_timed, timer_duration_seconds, timer_prep_seconds, is_active)
+  VALUES
+    ('seed-squat-01', 1, 'Присед со штангой',            1, 1,
+      80, 2.5, 60, 80,
+      12, 10, 8, 4,
+      3, 0, NULL, NULL, 1),
+
+    ('seed-squat-02', 1, 'Жим узким хватом',             2, 1,
+      50, 2.5, 60, 80,
+      12, 10, 8, 4,
+      3, 0, NULL, NULL, 1),
+
+    ('seed-squat-03', 1, 'Ножницы',                      3, 1,
+      30, 2.5, 60, 80,
+      12, 10, 8, 4,
+      3, 0, NULL, NULL, 1),
+
+    ('seed-squat-04', 1, 'Брусья',                       4, 0,
+      NULL, 2.5, NULL, NULL,
+      12, 10, 8, 4,
+      3, 0, NULL, NULL, 1),
+
+    ('seed-squat-05', 1, 'Выпрямление ног в тренажёре',  5, 1,
+      40, 2.5, 60, 80,
+      12, 10, 8, 4,
+      3, 0, NULL, NULL, 1),
+
+    ('seed-squat-06', 1, 'Отжимания',                    6, 0,
+      NULL, 0, NULL, NULL,
+      12, 10, 8, 4,
+      3, 0, NULL, NULL, 1),
+
+    ('seed-squat-07', 1, 'Пресс верхний',                7, 0,
+      NULL, 0, NULL, NULL,
+      12, 10, 8, 4,
+      3, 0, NULL, NULL, 1);
 `;

@@ -1,17 +1,27 @@
 // src/utils/weight.ts
 
 /**
- * Weight progression utilities.
- *
- * When the user achieves max reps (8+8+8=24 by default), the working
- * weight increases by a configurable increment (default 2.5 kg) and
- * reps reset to a starting point.
- *
- * When the user falls to min reps (4+4+4=12 by default), the working
- * weight decreases by the same increment and reps reset.
+ * Weight progression and warmup calculation utilities.
  */
 
 import { type WeightChangeDecision } from './reps';
+
+/**
+ * Rounds a weight to the nearest step (default 2.5 kg).
+ *
+ * @param weight - Raw weight value
+ * @param step - Rounding step (default 2.5)
+ * @returns Weight rounded to nearest step
+ *
+ * @example
+ *   roundToStep(48)   → 47.5
+ *   roundToStep(49)   → 50
+ *   roundToStep(64)   → 65
+ *   roundToStep(15.3) → 15
+ */
+export function roundToStep(weight: number, step: number = 2.5): number {
+  return Math.round(weight / step) * step;
+}
 
 /**
  * Calculates the new working weight after a weight change decision.
@@ -41,12 +51,6 @@ export function calculateNewWeight(
 /**
  * Returns the starting target total reps after a weight change.
  *
- * After an increase: reps reset to a moderate value (e.g., 6*3=18)
- * to give room for adaptation to the new weight.
- *
- * After a decrease: reps reset to a moderate-high value (e.g., 6*3=18)
- * since the weight is now lighter.
- *
  * @param numSets - Number of working sets (default 3)
  * @param resetRepsPerSet - Reps per set after weight change (default 6)
  * @returns Target total reps for first session at new weight
@@ -59,21 +63,38 @@ export function getResetTargetTotal(
 }
 
 /**
- * Calculates warmup weights based on working weight and offsets.
+ * Calculates warmup weights as percentages of working weight,
+ * rounded to the nearest 2.5 kg.
  *
  * @param workingWeight - Current working weight in kg
- * @param warmup1Offset - Kg below working weight for warmup set 1 (e.g., 20)
- * @param warmup2Offset - Kg below working weight for warmup set 2 (e.g., 10)
+ * @param warmup1Percent - Percentage for warmup set 1 (e.g., 60 = 60%)
+ * @param warmup2Percent - Percentage for warmup set 2 (e.g., 80 = 80%)
+ * @param roundingStep - Round to nearest step in kg (default 2.5)
  * @returns Object with warmup1Weight and warmup2Weight (both >= 0)
+ *
+ * @example
+ *   // Working weight 80 kg:
+ *   //   warmup1 = 60% of 80 = 48 → rounded to 47.5
+ *   //   warmup2 = 80% of 80 = 64 → rounded to 65
+ *   calculateWarmupWeights(80, 60, 80) → { warmup1Weight: 47.5, warmup2Weight: 65 }
+ *
+ *   // Working weight 25 kg:
+ *   //   warmup1 = 60% of 25 = 15 → 15
+ *   //   warmup2 = 80% of 25 = 20 → 20
+ *   calculateWarmupWeights(25, 60, 80) → { warmup1Weight: 15, warmup2Weight: 20 }
  */
 export function calculateWarmupWeights(
   workingWeight: number,
-  warmup1Offset: number,
-  warmup2Offset: number
+  warmup1Percent: number,
+  warmup2Percent: number,
+  roundingStep: number = 2.5
 ): { warmup1Weight: number; warmup2Weight: number } {
+  const raw1 = workingWeight * (warmup1Percent / 100);
+  const raw2 = workingWeight * (warmup2Percent / 100);
+
   return {
-    warmup1Weight: Math.max(0, workingWeight - warmup1Offset),
-    warmup2Weight: Math.max(0, workingWeight - warmup2Offset),
+    warmup1Weight: Math.max(0, roundToStep(raw1, roundingStep)),
+    warmup2Weight: Math.max(0, roundToStep(raw2, roundingStep)),
   };
 }
 

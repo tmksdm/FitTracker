@@ -11,7 +11,7 @@ import { colors, fontSize } from '../theme';
 import type { RootStackParamList, MainTabParamList } from './types';
 
 // ---- Real screens ----
-import { HomeScreen } from '../screens';
+import { HomeScreen, ActiveWorkoutScreen } from '../screens';
 
 // ---- Placeholder screens (will be replaced with real ones) ----
 
@@ -52,9 +52,6 @@ function AnalyticsScreen() {
 }
 function SettingsScreen() {
   return <PlaceholderScreen name="Настройки" />;
-}
-function ActiveWorkoutScreen() {
-  return <PlaceholderScreen name="Тренировка" />;
 }
 function WorkoutSummaryScreen() {
   return <PlaceholderScreen name="Итоги тренировки" />;

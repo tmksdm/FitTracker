@@ -10,6 +10,7 @@ export {
 export type { WeightChangeDecision } from './reps';
 
 export {
+  roundToStep,
   calculateNewWeight,
   getResetTargetTotal,
   calculateWarmupWeights,

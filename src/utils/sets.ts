@@ -8,7 +8,7 @@
  */
 
 import { Exercise } from '../types';
-import { distributeReps, getDefaultTargetReps } from './reps';
+import { getDefaultTargetReps } from './reps';
 import { calculateWarmupWeights } from './weight';
 
 /**
@@ -29,8 +29,8 @@ export interface PlannedSet {
  * Generates the planned sets for a weighted exercise (has warmups).
  *
  * Set structure:
- *   1. Warmup 1: working weight - warmup1Offset, warmup1Reps
- *   2. Warmup 2: working weight - warmup2Offset, warmup2Reps
+ *   1. Warmup 1: warmup1Percent% of working weight, warmup1Reps
+ *   2. Warmup 2: warmup2Percent% of working weight, warmup2Reps
  *   3-5. Working sets: working weight, distributed target reps
  *
  * @param exercise - The exercise entity
@@ -57,15 +57,15 @@ export function generateSetsForWeightedExercise(
   const sets: PlannedSet[] = [];
   let setNumber = 1;
 
-  // Warmup sets (only for weighted exercises)
+  // Warmup sets (only for weighted exercises with percent defined)
   if (
-    exercise.warmup1Offset !== null &&
-    exercise.warmup1Offset !== undefined
+    exercise.warmup1Percent !== null &&
+    exercise.warmup1Percent !== undefined
   ) {
     const warmups = calculateWarmupWeights(
       workingWeight,
-      exercise.warmup1Offset,
-      exercise.warmup2Offset ?? 0
+      exercise.warmup1Percent,
+      exercise.warmup2Percent ?? 80
     );
 
     sets.push({
@@ -148,7 +148,6 @@ export function generateSetsForExercise(
   exercise: Exercise,
   targetRepsPerSet: number[] | null
 ): PlannedSet[] {
-  // Timed exercises (jump rope etc.) don't use the standard set structure
   if (exercise.isTimed) {
     return [];
   }
@@ -164,19 +163,13 @@ export function generateSetsForExercise(
  * Represents the timer configuration for a timed exercise.
  */
 export interface TimedExerciseConfig {
-  /** Preparation time in seconds (countdown before the exercise starts) */
   prepSeconds: number;
-  /** Active exercise duration in seconds */
   durationSeconds: number;
-  /** Total timer duration (prep + active) */
   totalSeconds: number;
 }
 
 /**
  * Gets the timer configuration for a timed exercise (e.g., jump rope).
- *
- * @param exercise - The exercise entity (must have isTimed = true)
- * @returns Timer config, or null if the exercise is not timed
  */
 export function getTimedExerciseConfig(
   exercise: Exercise

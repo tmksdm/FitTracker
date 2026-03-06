@@ -47,6 +47,8 @@ export interface ActiveExercise {
   sets: ActiveSet[];
   status: ExerciseStatus;
   isPriority: boolean;
+  /** Saved original sets before skip, so we can restore them */
+  originalSets: ActiveSet[] | null;
 }
 
 export interface WorkoutState {
@@ -85,6 +87,7 @@ export interface WorkoutState {
   completeSet: (exerciseIndex: number, setIndex: number, actualReps?: number) => void;
   updateSetReps: (exerciseIndex: number, setIndex: number, reps: number) => void;
   skipExercise: (exerciseIndex: number) => void;
+  unskipExercise: (exerciseIndex: number) => void;
 
   // Timer
   setRestTimerDefault: (seconds: number) => void;
@@ -102,7 +105,6 @@ export interface WorkoutState {
 // Helper: determine exercise status from its sets
 function getExerciseStatus(sets: ActiveSet[], isTimed: boolean): ExerciseStatus {
   if (isTimed) {
-    // Timed exercises have no standard sets; handled separately
     return 'not_started';
   }
   if (sets.length === 0) return 'not_started';
@@ -173,12 +175,10 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
         let targetRepsPerSet: number[] | null = null;
 
         if (!exercise.isTimed) {
-          // Get last working logs for this exercise to determine target
           const lastLogs =
             await workoutRepo.getLastWorkingLogsForExercise(exercise.id);
 
           if (lastLogs.length > 0) {
-            // Calculate total actual reps from last session
             const previousTotal = lastLogs.reduce(
               (sum, log) => sum + log.actualReps,
               0
@@ -190,7 +190,6 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
               exercise.minRepsPerSet
             );
           } else {
-            // No history — use defaults
             targetRepsPerSet = getDefaultTargetReps(exercise.numWorkingSets);
           }
         }
@@ -212,11 +211,13 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
           sets: activeSets,
           status: 'not_started',
           isPriority: skippedIds.has(exercise.id),
+          originalSets: null,
         });
       }
 
-      // 6. Toggle direction for this day type in DB
-      await dayTypeRepo.toggleDirection(dayTypeId);
+      // Direction is now global — no need to toggle per day type.
+      // The direction is saved in the workout_sessions record,
+      // and the next session's direction is computed from it.
 
       set({
         session,
@@ -245,7 +246,6 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
             activeEx.sets.every((s) => !s.isCompleted));
 
         if (isSkippedExercise && activeEx.sets.length > 0) {
-          // Save a single log entry marking the exercise as skipped
           await workoutRepo.createExerciseLog({
             workoutSessionId: state.session.id,
             exerciseId: activeEx.exercise.id,
@@ -257,7 +257,6 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
             isSkipped: true,
           });
         } else {
-          // Save each completed set
           for (const activeSet of activeEx.sets) {
             if (activeSet.isCompleted) {
               await workoutRepo.createExerciseLog({
@@ -274,7 +273,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
           }
         }
 
-        // 2. Check for weight progression (only completed weighted exercises)
+        // 2. Check for weight progression
         if (
           activeEx.exercise.hasAddedWeight &&
           activeEx.status === 'completed'
@@ -305,10 +304,10 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
         }
       }
 
-      // 3. Finish the session in DB (calculates totalKg)
+      // 3. Finish the session in DB
       await workoutRepo.finishWorkoutSession(state.session.id, weightAfter);
 
-      // 4. Re-fetch the session to get calculated totalKg
+      // 4. Re-fetch the session
       const finishedSession = await workoutRepo.getWorkoutSessionById(
         state.session.id
       );
@@ -336,7 +335,6 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   // CANCEL WORKOUT
   // =======================================
   cancelWorkout: () => {
-    // TODO: optionally delete the session from DB
     set({
       session: null,
       isActive: false,
@@ -405,14 +403,40 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       const exercises = [...state.exercises];
       const exercise = { ...exercises[exerciseIndex] };
 
+      // Save original sets before marking as skipped
+      exercise.originalSets = exercise.sets.map((s) => ({ ...s }));
+
       exercise.status = 'skipped';
-      // Mark all sets as completed with 0 reps
       exercise.sets = exercise.sets.map((s) => ({
         ...s,
         actualReps: 0,
         isCompleted: true,
       }));
 
+      exercises[exerciseIndex] = exercise;
+      return { exercises };
+    });
+  },
+
+  unskipExercise: (exerciseIndex: number) => {
+    set((state) => {
+      const exercises = [...state.exercises];
+      const exercise = { ...exercises[exerciseIndex] };
+
+      if (exercise.originalSets) {
+        // Restore saved sets from before skip
+        exercise.sets = exercise.originalSets;
+        exercise.originalSets = null;
+      } else {
+        // Fallback: reset all sets to uncompleted
+        exercise.sets = exercise.sets.map((s) => ({
+          ...s,
+          actualReps: null,
+          isCompleted: false,
+        }));
+      }
+
+      exercise.status = getExerciseStatus(exercise.sets, exercise.exercise.isTimed);
       exercises[exerciseIndex] = exercise;
       return { exercises };
     });

@@ -24,18 +24,18 @@ export interface Exercise {
   sortOrder: number;
   hasAddedWeight: boolean;
   workingWeight: number | null;
-  weightIncrement: number;       // шаг изменения веса (по умолчанию 2.5)
-  warmup1Offset: number | null;  // на сколько кг меньше рабочего веса в разминке 1
-  warmup2Offset: number | null;  // на сколько кг меньше рабочего веса в разминке 2
-  warmup1Reps: number;           // повторений в разминке 1 (по умолчанию 12)
-  warmup2Reps: number;           // повторений в разминке 2 (по умолчанию 10)
-  maxRepsPerSet: number;         // максимум повторений в рабочем подходе (по умолчанию 8)
-  minRepsPerSet: number;         // минимум повторений в рабочем подходе (по умолчанию 4)
-  numWorkingSets: number;        // количество рабочих подходов (по умолчанию 3)
-  isTimed: boolean;              // true для скакалки
+  weightIncrement: number;        // шаг изменения веса (по умолчанию 2.5)
+  warmup1Percent: number | null;  // % от рабочего веса в разминке 1 (по умолчанию 60)
+  warmup2Percent: number | null;  // % от рабочего веса в разминке 2 (по умолчанию 80)
+  warmup1Reps: number;            // повторений в разминке 1 (по умолчанию 12)
+  warmup2Reps: number;            // повторений в разминке 2 (по умолчанию 10)
+  maxRepsPerSet: number;          // максимум повторений в рабочем подходе (по умолчанию 8)
+  minRepsPerSet: number;          // минимум повторений в рабочем подходе (по умолчанию 4)
+  numWorkingSets: number;         // количество рабочих подходов (по умолчанию 3)
+  isTimed: boolean;               // true для скакалки
   timerDurationSeconds: number | null;  // длительность таймера (60 для скакалки)
   timerPrepSeconds: number | null;      // время подготовки (15 для скакалки)
-  isActive: boolean;             // false = упражнение удалено (мягкое удаление)
+  isActive: boolean;              // false = упражнение удалено (мягкое удаление)
 }
 
 // --- Тренировочная сессия ---

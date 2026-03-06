@@ -40,17 +40,22 @@ function formatDuration(start: string, end: string | null): string {
   return `${mins} мин`;
 }
 
-function formatWeight(kg: number | null): string {
-  if (kg === null) return '—';
-  return `${kg} кг`;
+/** Format kg with Russian comma as decimal separator, no thousands grouping */
+function formatKg(kg: number): string {
+  if (kg === 0) return '—';
+  // If it's a whole number, no decimal
+  if (Number.isInteger(kg)) return `${kg} кг`;
+  // Otherwise use comma as decimal separator
+  return `${kg.toString().replace('.', ',')} кг`;
 }
 
 function calculateAvgWeight(before: number | null, after: number | null): string {
   if (before !== null && after !== null) {
-    return `${((before + after) / 2).toFixed(1)} кг`;
+    const avg = (before + after) / 2;
+    return formatKg(avg);
   }
-  if (before !== null) return `${before} кг`;
-  if (after !== null) return `${after} кг`;
+  if (before !== null) return formatKg(before);
+  if (after !== null) return formatKg(after);
   return '—';
 }
 
@@ -122,7 +127,7 @@ export default function LastWorkoutCard({ session, dayTypes }: LastWorkoutCardPr
         <StatItem
           icon="weight"
           label="Тоннаж"
-          value={session.totalKg > 0 ? `${session.totalKg.toLocaleString()} кг` : '—'}
+          value={formatKg(session.totalKg)}
         />
       </View>
 

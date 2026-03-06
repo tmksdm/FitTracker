@@ -3,7 +3,7 @@
 // ==========================================
 
 import * as SQLite from 'expo-sqlite';
-import { CREATE_TABLES_SQL, SEED_DAY_TYPES_SQL } from './schema';
+import { CREATE_TABLES_SQL, SEED_DAY_TYPES_SQL, SEED_EXERCISES_SQL } from './schema';
 
 let db: SQLite.SQLiteDatabase | null = null;
 
@@ -20,6 +20,9 @@ export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
 
   // Заполняем начальные данные
   await db.execAsync(SEED_DAY_TYPES_SQL);
+
+  // Seed-упражнения для тестирования
+  await db.execAsync(SEED_EXERCISES_SQL);
 
   console.log('Database initialized successfully');
   return db;

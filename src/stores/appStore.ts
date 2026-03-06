@@ -47,16 +47,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       const dayTypes = await dayTypeRepo.getAllDayTypes();
       const nextDayTypeId = await dayTypeRepo.getNextDayTypeId();
 
-      // Determine next direction based on last session of that day type
-      const lastSessionForType =
-        await workoutRepo.getLastSessionByDayType(nextDayTypeId);
-      const nextDirection = getDirectionForNextSession(
-        lastSessionForType?.direction ?? null
-      );
-
-      // Get last session overall (for dashboard display)
+      // Direction is global: based on the LAST session of ANY type
       const allSessions = await workoutRepo.getAllSessions(1);
       const lastSession = allSessions.length > 0 ? allSessions[0] : null;
+      const nextDirection = getDirectionForNextSession(
+        lastSession?.direction ?? null
+      );
 
       set({
         dayTypes,
@@ -76,14 +72,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   refreshNextDayInfo: async () => {
     try {
       const nextDayTypeId = await dayTypeRepo.getNextDayTypeId();
-      const lastSessionForType =
-        await workoutRepo.getLastSessionByDayType(nextDayTypeId);
-      const nextDirection = getDirectionForNextSession(
-        lastSessionForType?.direction ?? null
-      );
 
+      // Direction is global: based on the LAST session of ANY type
       const allSessions = await workoutRepo.getAllSessions(1);
       const lastSession = allSessions.length > 0 ? allSessions[0] : null;
+      const nextDirection = getDirectionForNextSession(
+        lastSession?.direction ?? null
+      );
 
       set({ nextDayTypeId, nextDirection, lastSession });
     } catch (error) {
