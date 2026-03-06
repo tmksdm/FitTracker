@@ -6,8 +6,12 @@ import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Text, View, StyleSheet } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, fontSize } from '../theme';
 import type { RootStackParamList, MainTabParamList } from './types';
+
+// ---- Real screens ----
+import { HomeScreen } from '../screens';
 
 // ---- Placeholder screens (will be replaced with real ones) ----
 
@@ -40,9 +44,6 @@ const placeholderStyles = StyleSheet.create({
 });
 
 // Placeholder screen components
-function HomeScreen() {
-  return <PlaceholderScreen name="Главная" />;
-}
 function HistoryScreen() {
   return <PlaceholderScreen name="История" />;
 }
@@ -60,21 +61,6 @@ function WorkoutSummaryScreen() {
 }
 function ExerciseEditorScreen() {
   return <PlaceholderScreen name="Редактор упражнений" />;
-}
-
-// ---- Tab icons (simple text-based until we add icon library) ----
-
-function TabIcon({ label, focused }: { label: string; focused: boolean }) {
-  return (
-    <Text
-      style={{
-        fontSize: 20,
-        color: focused ? colors.primary : colors.textMuted,
-      }}
-    >
-      {label}
-    </Text>
-  );
 }
 
 // ---- Navigators ----
@@ -104,8 +90,12 @@ function MainTabs() {
         component={HomeScreen}
         options={{
           tabBarLabel: 'Главная',
-          tabBarIcon: ({ focused }) => (
-            <TabIcon label="🏠" focused={focused} />
+          tabBarIcon: ({ focused, color, size }) => (
+            <MaterialCommunityIcons
+              name={focused ? 'home' : 'home-outline'}
+              size={size}
+              color={color}
+            />
           ),
         }}
       />
@@ -114,8 +104,12 @@ function MainTabs() {
         component={HistoryScreen}
         options={{
           tabBarLabel: 'История',
-          tabBarIcon: ({ focused }) => (
-            <TabIcon label="📋" focused={focused} />
+          tabBarIcon: ({ focused, color, size }) => (
+            <MaterialCommunityIcons
+              name={focused ? 'clipboard-text' : 'clipboard-text-outline'}
+              size={size}
+              color={color}
+            />
           ),
         }}
       />
@@ -124,8 +118,12 @@ function MainTabs() {
         component={AnalyticsScreen}
         options={{
           tabBarLabel: 'Статистика',
-          tabBarIcon: ({ focused }) => (
-            <TabIcon label="📊" focused={focused} />
+          tabBarIcon: ({ focused, color, size }) => (
+            <MaterialCommunityIcons
+              name="chart-line"
+              size={size}
+              color={color}
+            />
           ),
         }}
       />
@@ -134,8 +132,12 @@ function MainTabs() {
         component={SettingsScreen}
         options={{
           tabBarLabel: 'Настройки',
-          tabBarIcon: ({ focused }) => (
-            <TabIcon label="⚙️" focused={focused} />
+          tabBarIcon: ({ focused, color, size }) => (
+            <MaterialCommunityIcons
+              name={focused ? 'cog' : 'cog-outline'}
+              size={size}
+              color={color}
+            />
           ),
         }}
       />
@@ -158,7 +160,7 @@ export default function AppNavigator() {
         component={ActiveWorkoutScreen}
         options={{
           animation: 'slide_from_bottom',
-          gestureEnabled: false, // prevent accidental swipe-back during workout
+          gestureEnabled: false,
         }}
       />
       <Stack.Screen
