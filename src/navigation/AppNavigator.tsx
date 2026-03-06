@@ -148,6 +148,7 @@ export default function AppNavigator() {
       screenOptions={{
         headerShown: false,
         contentStyle: { backgroundColor: colors.background },
+        navigationBarColor: colors.background,
         animation: 'slide_from_right',
       }}
     >
