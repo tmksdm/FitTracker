@@ -6,6 +6,7 @@ export type RootStackParamList = {
   MainTabs: undefined;
   ActiveWorkout: undefined;
   WorkoutSummary: { sessionId: string };
+  WorkoutDetail: { sessionId: string };
   ExerciseEditor: { dayTypeId: number };
 };
 

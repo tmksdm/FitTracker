@@ -5,11 +5,26 @@
 import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AppNavigator from './src/navigation/AppNavigator';
 import { useAppStore } from './src/stores';
 import { colors } from './src/theme';
+
+// Dark navigation theme — prevents white flash on screen transitions
+const DarkNavTheme = {
+  ...DefaultTheme,
+  dark: true,
+  colors: {
+    ...DefaultTheme.colors,
+    background: colors.background,
+    card: colors.surface,
+    text: colors.text,
+    border: colors.border,
+    primary: colors.primary,
+    notification: colors.error,
+  },
+};
 
 export default function App() {
   const initialize = useAppStore((s) => s.initialize);
@@ -33,7 +48,7 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <NavigationContainer>
+      <NavigationContainer theme={DarkNavTheme}>
         <AppNavigator />
         <StatusBar style="light" />
       </NavigationContainer>
