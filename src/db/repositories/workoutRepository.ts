@@ -295,3 +295,64 @@ export async function getCardioBySession(
   );
   return rows.map(mapCardioRow);
 }
+
+// --- Сводка упражнений для экрана итогов ---
+
+export interface ExerciseSummary {
+  exerciseId: string;
+  exerciseName: string;
+  hasAddedWeight: boolean;
+  workingWeight: number | null;
+  sets: ExerciseLog[];
+  isSkipped: boolean;
+  totalKg: number;
+}
+
+export async function getSessionExerciseSummary(
+  sessionId: string
+): Promise<ExerciseSummary[]> {
+  const db = await getDatabase();
+
+  // Get all logs for this session, joined with exercise name
+  const rows = await db.getAllAsync(
+    `SELECT el.*, e.name as exercise_name, e.has_added_weight, e.working_weight
+     FROM exercise_logs el
+     JOIN exercises e ON el.exercise_id = e.id
+     WHERE el.workout_session_id = ?
+     ORDER BY e.sort_order, el.set_number`,
+    [sessionId]
+  );
+
+  // Group by exerciseId
+  const grouped = new Map<string, ExerciseSummary>();
+
+  for (const row of rows as any[]) {
+    const log = mapLogRow(row);
+    const exerciseId = log.exerciseId;
+
+    if (!grouped.has(exerciseId)) {
+      grouped.set(exerciseId, {
+        exerciseId,
+        exerciseName: row.exercise_name,
+        hasAddedWeight: row.has_added_weight === 1,
+        workingWeight: row.working_weight,
+        sets: [],
+        isSkipped: false,
+        totalKg: 0,
+      });
+    }
+
+    const summary = grouped.get(exerciseId)!;
+    summary.sets.push(log);
+
+    if (log.isSkipped) {
+      summary.isSkipped = true;
+    }
+
+    if (log.weight > 0 && log.actualReps > 0 && !log.isSkipped) {
+      summary.totalKg += log.weight * log.actualReps;
+    }
+  }
+
+  return Array.from(grouped.values());
+}

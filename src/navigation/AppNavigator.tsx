@@ -11,7 +11,7 @@ import { colors, fontSize } from '../theme';
 import type { RootStackParamList, MainTabParamList } from './types';
 
 // ---- Real screens ----
-import { HomeScreen, ActiveWorkoutScreen } from '../screens';
+import { HomeScreen, ActiveWorkoutScreen, WorkoutSummaryScreen } from '../screens';
 
 // ---- Placeholder screens (will be replaced with real ones) ----
 
@@ -52,9 +52,6 @@ function AnalyticsScreen() {
 }
 function SettingsScreen() {
   return <PlaceholderScreen name="Настройки" />;
-}
-function WorkoutSummaryScreen() {
-  return <PlaceholderScreen name="Итоги тренировки" />;
 }
 function ExerciseEditorScreen() {
   return <PlaceholderScreen name="Редактор упражнений" />;
@@ -165,6 +162,7 @@ export default function AppNavigator() {
         component={WorkoutSummaryScreen}
         options={{
           animation: 'fade',
+          gestureEnabled: false, // prevent swipe back to active workout
         }}
       />
       <Stack.Screen
