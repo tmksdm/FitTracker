@@ -26,7 +26,6 @@ import {
 import { useAppStore } from '../stores/appStore';
 import { analyticsRepo } from '../db';
 import type {
-  TonnageDataPoint,
   MonthlyTonnage,
   YearlyTonnage,
   BodyWeightDataPoint,
@@ -38,13 +37,19 @@ import type {
 } from '../db/repositories/analyticsRepository';
 import type { DayTypeId } from '../types';
 
+// ---- Layout constants ----
 const SCREEN_WIDTH = Dimensions.get('window').width;
-// paddingRight in react-native-chart-kit is actually the LEFT margin
-// reserved for Y-axis labels. Default is 64.
-const CHART_Y_AXIS_WIDTH = 56;
-const CHART_CONTAINER_HPADDING = spacing.lg;
-const CHART_WIDTH =
-  SCREEN_WIDTH - CHART_CONTAINER_HPADDING * 2 + CHART_Y_AXIS_WIDTH - 16;
+// Cards sit inside tabContentInner with padding = spacing.lg each side
+const CONTENT_PADDING = spacing.lg;
+const CARD_WIDTH = SCREEN_WIDTH - CONTENT_PADDING * 2;
+
+// react-native-chart-kit quirks:
+//  - `style.paddingRight` = LEFT margin for Y-axis labels (misnamed)
+//  - The library adds its own right-side padding internally
+// Strategy: set chart width = CARD_WIDTH (same as statsCard),
+// use paddingRight for Y-axis, and clip any overflow.
+const CHART_Y_AXIS_WIDTH = 48;
+const CHART_WIDTH = CARD_WIDTH;
 const CHART_HEIGHT = 200;
 
 // ---- Tab definitions ----
@@ -158,12 +163,40 @@ function buildChartData(
       {
         data: data.length > 0 ? data : [0],
         color: lineColor
-          ? (opacity = 1) => {
+          ? (_opacity = 1) => {
               const hex = lineColor.replace('#', '');
               const r = parseInt(hex.substring(0, 2), 16);
               const g = parseInt(hex.substring(2, 4), 16);
               const b = parseInt(hex.substring(4, 6), 16);
-              return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+              return `rgba(${r}, ${g}, ${b}, ${_opacity})`;
+            }
+          : undefined,
+        strokeWidth: 2,
+      },
+    ],
+  };
+}
+
+/**
+ * Build chart data showing ALL labels (for fixed-slot charts like 12 months / 12 years).
+ */
+function buildFixedSlotChartData(
+  labels: string[],
+  data: number[],
+  lineColor?: string
+) {
+  return {
+    labels,
+    datasets: [
+      {
+        data: data.length > 0 ? data : [0],
+        color: lineColor
+          ? (_opacity = 1) => {
+              const hex = lineColor.replace('#', '');
+              const r = parseInt(hex.substring(0, 2), 16);
+              const g = parseInt(hex.substring(2, 4), 16);
+              const b = parseInt(hex.substring(4, 6), 16);
+              return `rgba(${r}, ${g}, ${b}, ${_opacity})`;
             }
           : undefined,
         strokeWidth: 2,
@@ -179,6 +212,60 @@ function colorFromHex(hex: string) {
   const g = parseInt(clean.substring(2, 4), 16);
   const b = parseInt(clean.substring(4, 6), 16);
   return (opacity = 1) => `rgba(${r}, ${g}, ${b}, ${opacity})`;
+}
+
+// ---- Helpers for 12-month / 12-year slot filling ----
+
+function buildLast12Months(
+  data: MonthlyTonnage[]
+): { labels: string[]; values: number[] } {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+
+  const labels: string[] = [];
+  const values: number[] = [];
+
+  const dataMap = new Map<string, number>();
+  for (const d of data) {
+    dataMap.set(`${d.year}-${d.month}`, d.avgTotalKg);
+  }
+
+  for (let i = 11; i >= 0; i--) {
+    let m = currentMonth - i;
+    let y = currentYear;
+    while (m <= 0) {
+      m += 12;
+      y -= 1;
+    }
+    labels.push(m.toString().padStart(2, '0'));
+    values.push(dataMap.get(`${y}-${m}`) ?? 0);
+  }
+
+  return { labels, values };
+}
+
+function buildLast12Years(
+  data: YearlyTonnage[]
+): { labels: string[]; values: number[] } {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+
+  const labels: string[] = [];
+  const values: number[] = [];
+
+  const dataMap = new Map<number, number>();
+  for (const d of data) {
+    dataMap.set(d.year, d.avgTotalKg);
+  }
+
+  for (let i = 11; i >= 0; i--) {
+    const y = currentYear - i;
+    labels.push(y.toString().slice(2));
+    values.push(dataMap.get(y) ?? 0);
+  }
+
+  return { labels, values };
 }
 
 // ---- Empty state component ----
@@ -219,7 +306,6 @@ function StatRow({
 }
 
 // ---- Shared chart style ----
-// paddingRight in react-native-chart-kit = left space for Y labels
 const chartStyle = {
   borderRadius: borderRadius.lg,
   paddingRight: CHART_Y_AXIS_WIDTH,
@@ -230,14 +316,12 @@ const chartStyle = {
 // ==========================================
 
 export default function AnalyticsScreen() {
-  // ---- State ----
   const [activeTab, setActiveTab] = useState<TabKey>('tonnage');
   const [isLoading, setIsLoading] = useState(true);
   const hasLoaded = useRef(false);
 
   // Tonnage state
   const [dayTypeFilter, setDayTypeFilter] = useState<DayTypeFilter>('all');
-  const [tonnageWorkouts, setTonnageWorkouts] = useState<TonnageDataPoint[]>([]);
   const [monthlyTonnage, setMonthlyTonnage] = useState<MonthlyTonnage[]>([]);
   const [yearlyTonnage, setYearlyTonnage] = useState<YearlyTonnage[]>([]);
 
@@ -260,12 +344,10 @@ export default function AnalyticsScreen() {
 
   const loadTonnageData = useCallback(async (filter: DayTypeFilter) => {
     const dtId = filter === 'all' ? undefined : filter;
-    const [workouts, monthly, yearly] = await Promise.all([
-      analyticsRepo.getTonnagePerWorkout(dtId),
+    const [monthly, yearly] = await Promise.all([
       analyticsRepo.getMonthlyTonnage(dtId),
       analyticsRepo.getYearlyTonnage(dtId),
     ]);
-    setTonnageWorkouts(workouts);
     setMonthlyTonnage(monthly);
     setYearlyTonnage(yearly);
   }, []);
@@ -351,6 +433,12 @@ export default function AnalyticsScreen() {
 
     const filterColorFn = colorFromHex(filterColor);
 
+    const monthly12 = buildLast12Months(monthlyTonnage);
+    const hasMonthlyData = monthly12.values.some((v) => v > 0);
+
+    const yearly12 = buildLast12Years(yearlyTonnage);
+    const hasYearlyData = yearly12.values.some((v) => v > 0);
+
     return (
       <ScrollView
         style={styles.tabContent}
@@ -391,67 +479,17 @@ export default function AnalyticsScreen() {
           })}
         </View>
 
-        {/* Per-workout chart */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Тоннаж по тренировкам</Text>
-          {tonnageWorkouts.length < 2 ? (
-            <EmptyState message="Нужно минимум 2 тренировки для графика" />
-          ) : (
-            <View style={styles.chartContainer}>
-              <LineChart
-                data={buildChartData(
-                  tonnageWorkouts.map((w) => formatShortDate(w.date)),
-                  tonnageWorkouts.map((w) => w.totalKg),
-                  6,
-                  filterColor
-                )}
-                width={CHART_WIDTH}
-                height={CHART_HEIGHT}
-                chartConfig={{
-                  ...chartConfig,
-                  color: filterColorFn,
-                  propsForDots: {
-                    r: tonnageWorkouts.length > 30 ? '2' : '4',
-                    strokeWidth: '1',
-                    stroke: filterColor,
-                  },
-                }}
-                bezier
-                style={chartStyle}
-                withInnerLines={true}
-                withOuterLines={false}
-                withVerticalLines={false}
-                fromZero={false}
-                yAxisSuffix=""
-                segments={4}
-                formatYLabel={(v) => Math.round(Number(v)).toString()}
-              />
-            </View>
-          )}
-        </View>
-
-        {/* Monthly averages */}
+        {/* Monthly averages chart */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Среднее за месяц</Text>
-          {monthlyTonnage.length === 0 ? (
+          {!hasMonthlyData ? (
             <EmptyState message="Нет данных" />
-          ) : monthlyTonnage.length === 1 ? (
-            <View style={styles.singleStatCard}>
-              <Text style={styles.singleStatLabel}>{monthlyTonnage[0].label}</Text>
-              <Text style={styles.singleStatValue}>
-                {formatKg(monthlyTonnage[0].avgTotalKg)} кг
-              </Text>
-              <Text style={styles.singleStatSub}>
-                {monthlyTonnage[0].workoutCount} тренир.
-              </Text>
-            </View>
           ) : (
             <View style={styles.chartContainer}>
               <LineChart
-                data={buildChartData(
-                  monthlyTonnage.map((m) => shortenMonthLabel(m.label)),
-                  monthlyTonnage.map((m) => m.avgTotalKg),
-                  6,
+                data={buildFixedSlotChartData(
+                  monthly12.labels,
+                  monthly12.values,
                   filterColor
                 )}
                 width={CHART_WIDTH}
@@ -463,6 +501,9 @@ export default function AnalyticsScreen() {
                     r: '4',
                     strokeWidth: '2',
                     stroke: filterColor,
+                  },
+                  propsForLabels: {
+                    fontSize: 10,
                   },
                 }}
                 bezier
@@ -496,10 +537,47 @@ export default function AnalyticsScreen() {
           )}
         </View>
 
-        {/* Yearly averages */}
-        {yearlyTonnage.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Среднее за год</Text>
+        {/* Yearly averages chart + table */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Среднее за год</Text>
+          {!hasYearlyData ? (
+            <EmptyState message="Нет данных" />
+          ) : (
+            <View style={styles.chartContainer}>
+              <LineChart
+                data={buildFixedSlotChartData(
+                  yearly12.labels,
+                  yearly12.values,
+                  filterColor
+                )}
+                width={CHART_WIDTH}
+                height={CHART_HEIGHT}
+                chartConfig={{
+                  ...chartConfig,
+                  color: filterColorFn,
+                  propsForDots: {
+                    r: '4',
+                    strokeWidth: '2',
+                    stroke: filterColor,
+                  },
+                  propsForLabels: {
+                    fontSize: 10,
+                  },
+                }}
+                bezier
+                style={chartStyle}
+                withInnerLines={true}
+                withOuterLines={false}
+                withVerticalLines={false}
+                fromZero={false}
+                yAxisSuffix=""
+                segments={4}
+                formatYLabel={(v) => Math.round(Number(v)).toString()}
+              />
+            </View>
+          )}
+
+          {yearlyTonnage.length > 0 && (
             <View style={styles.statsCard}>
               {yearlyTonnage
                 .slice()
@@ -513,8 +591,8 @@ export default function AnalyticsScreen() {
                   />
                 ))}
             </View>
-          </View>
-        )}
+          )}
+        </View>
       </ScrollView>
     );
   }
@@ -979,7 +1057,7 @@ export default function AnalyticsScreen() {
         <Text style={styles.title}>Статистика</Text>
       </View>
 
-      {/* Tab bar — ScrollView with fixed height instead of FlatList */}
+      {/* Tab bar */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -1032,7 +1110,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   header: {
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: CONTENT_PADDING,
     paddingTop: spacing.md,
     paddingBottom: spacing.xs,
   },
@@ -1042,13 +1120,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // Tab bar — horizontal scroll that shrinks to content height
   tabBarScroll: {
     flexGrow: 0,
     flexShrink: 0,
   },
   tabBar: {
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: CONTENT_PADDING,
     paddingVertical: spacing.sm,
     gap: spacing.xs + 2,
     alignItems: 'center',
@@ -1077,17 +1154,15 @@ const styles = StyleSheet.create({
     color: colors.primary,
   },
 
-  // Tab content
   tabContent: {
     flex: 1,
   },
   tabContentInner: {
-    padding: spacing.lg,
+    padding: CONTENT_PADDING,
     paddingBottom: spacing.xxl * 2,
     gap: spacing.lg,
   },
 
-  // Sections
   section: {
     gap: spacing.md,
   },
@@ -1103,7 +1178,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
 
-  // Filter chips
   filterRow: {
     flexDirection: 'row',
     gap: spacing.sm,
@@ -1122,20 +1196,20 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // Chart — no overflow:hidden so Y-axis labels are visible
+  // Chart container — same width as statsCard, clips chart overflow
   chartContainer: {
     borderRadius: borderRadius.lg,
     backgroundColor: colors.card,
+    overflow: 'hidden',
+    width: CARD_WIDTH,
   },
-  // (chartStyle is defined as a const above, not in StyleSheet,
-  //  because react-native-chart-kit reads paddingRight from style prop)
 
-  // Stats card
   statsCard: {
     backgroundColor: colors.card,
     borderRadius: borderRadius.lg,
     padding: spacing.md,
     gap: 0,
+    width: CARD_WIDTH,
   },
   statRow: {
     flexDirection: 'row',
@@ -1163,7 +1237,6 @@ const styles = StyleSheet.create({
     fontSize: fontSize.xs,
   },
 
-  // Single stat card
   singleStatCard: {
     backgroundColor: colors.card,
     borderRadius: borderRadius.lg,
@@ -1185,7 +1258,6 @@ const styles = StyleSheet.create({
     fontSize: fontSize.xs,
   },
 
-  // Empty state
   emptyState: {
     backgroundColor: colors.card,
     borderRadius: borderRadius.lg,
@@ -1199,7 +1271,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // Exercise picker
   exerciseGroup: {
     gap: spacing.sm,
   },
