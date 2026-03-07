@@ -85,7 +85,7 @@ export interface WorkoutState {
 
   recordEndTime: () => void;
   finishWorkout: (weightAfter: number | null) => Promise<WorkoutSession | null>;
-  cancelWorkout: () => void;
+  cancelWorkout: () => Promise<void>;
 
   // Exercise navigation
   setCurrentExercise: (index: number) => void;
@@ -252,10 +252,6 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       const cardioType: CardioType =
         dayTypeId === 1 ? 'jump_rope' : 'treadmill_3km';
 
-      // Direction is now global — no need to toggle per day type.
-      // The direction is saved in the workout_sessions record,
-      // and the next session's direction is computed from it.
-
       set({
         session,
         isActive: true,
@@ -413,7 +409,16 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   // =======================================
   // CANCEL WORKOUT
   // =======================================
-  cancelWorkout: () => {
+  cancelWorkout: async () => {
+    const state = get();
+    // Delete the unfinished session from DB if it exists
+    if (state.session?.id) {
+      try {
+        await workoutRepo.deleteWorkoutSession(state.session.id);
+      } catch (error) {
+        console.error('Failed to delete cancelled session:', error);
+      }
+    }
     set({
       session: null,
       isActive: false,

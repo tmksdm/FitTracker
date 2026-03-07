@@ -123,6 +123,16 @@ export async function getAllSessions(
   return rows.map(mapSessionRow);
 }
 
+/**
+ * Delete a workout session and all its related logs (exercise_logs + cardio_logs).
+ */
+export async function deleteWorkoutSession(sessionId: string): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync('DELETE FROM cardio_logs WHERE workout_session_id = ?', [sessionId]);
+  await db.runAsync('DELETE FROM exercise_logs WHERE workout_session_id = ?', [sessionId]);
+  await db.runAsync('DELETE FROM workout_sessions WHERE id = ?', [sessionId]);
+}
+
 // --- Логи подходов ---
 
 function mapLogRow(row: any): ExerciseLog {
@@ -204,7 +214,6 @@ export async function getLogsBySession(
   return rows.map(mapLogRow);
 }
 
-// Получить логи для конкретного упражнения в конкретной сессии
 export async function getLogsBySessionAndExercise(
   sessionId: string,
   exerciseId: string
@@ -219,7 +228,6 @@ export async function getLogsBySessionAndExercise(
   return rows.map(mapLogRow);
 }
 
-// Получить последние рабочие подходы для упражнения (для расчёта прогрессии)
 export async function getLastWorkingLogsForExercise(
   exerciseId: string
 ): Promise<ExerciseLog[]> {
@@ -237,7 +245,6 @@ export async function getLastWorkingLogsForExercise(
   return rows.map(mapLogRow);
 }
 
-// Проверить, было ли упражнение пропущено в последней сессии этого типа дня
 export async function wasExerciseSkippedLastSession(
   exerciseId: string,
   dayTypeId: DayTypeId
@@ -313,7 +320,6 @@ export async function getSessionExerciseSummary(
 ): Promise<ExerciseSummary[]> {
   const db = await getDatabase();
 
-  // Get all logs for this session, joined with exercise name
   const rows = await db.getAllAsync(
     `SELECT el.*, e.name as exercise_name, e.has_added_weight, e.working_weight
      FROM exercise_logs el
@@ -323,7 +329,6 @@ export async function getSessionExerciseSummary(
     [sessionId]
   );
 
-  // Group by exerciseId
   const grouped = new Map<string, ExerciseSummary>();
 
   for (const row of rows as any[]) {

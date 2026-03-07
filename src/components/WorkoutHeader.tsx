@@ -14,6 +14,7 @@ interface WorkoutHeaderProps {
   exercisesDone: number;
   exercisesTotal: number;
   onFinish: () => void;
+  onCancel: () => void;
 }
 
 function formatElapsed(startIso: string, endIso: string | null): string {
@@ -39,6 +40,7 @@ export default function WorkoutHeader({
   exercisesDone,
   exercisesTotal,
   onFinish,
+  onCancel,
 }: WorkoutHeaderProps) {
   const [elapsed, setElapsed] = useState('0:00');
 
@@ -61,6 +63,19 @@ export default function WorkoutHeader({
   return (
     <View style={styles.container}>
       <View style={styles.topRow}>
+        {/* Cancel button */}
+        <TouchableOpacity
+          style={styles.cancelButton}
+          onPress={onCancel}
+          activeOpacity={0.7}
+        >
+          <MaterialCommunityIcons
+            name="close"
+            size={22}
+            color={colors.error}
+          />
+        </TouchableOpacity>
+
         {/* Day type name and direction */}
         <View style={styles.titleSection}>
           <Text style={[styles.dayName, { color: accentColor }]} numberOfLines={1}>
@@ -136,6 +151,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: spacing.sm,
+  },
+  cancelButton: {
+    width: 36,
+    height: 36,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.error + '20',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.sm,
   },
   titleSection: {
     flex: 1,

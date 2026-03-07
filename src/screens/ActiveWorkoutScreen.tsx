@@ -2,7 +2,7 @@
 // Active Workout Screen — the core training UI
 // ==========================================
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -27,8 +27,9 @@ const SCREEN_WIDTH = Dimensions.get('window').width;
 export default function ActiveWorkoutScreen() {
   const navigation = useNavigation<WorkoutNavProp>();
 
-  // Workout store
+  // ---- All store subscriptions ----
   const session = useWorkoutStore((s) => s.session);
+  const isActive = useWorkoutStore((s) => s.isActive);
   const exercises = useWorkoutStore((s) => s.exercises);
   const currentExerciseIndex = useWorkoutStore((s) => s.currentExerciseIndex);
   const setCurrentExercise = useWorkoutStore((s) => s.setCurrentExercise);
@@ -41,7 +42,6 @@ export default function ActiveWorkoutScreen() {
   const startRestTimer = useWorkoutStore((s) => s.startRestTimer);
   const recordEndTime = useWorkoutStore((s) => s.recordEndTime);
 
-  // Cardio state (passed to FinishWorkoutModal)
   const cardioType = useWorkoutStore((s) => s.cardioType);
   const jumpRopeCount = useWorkoutStore((s) => s.jumpRopeCount);
   const treadmillSeconds = useWorkoutStore((s) => s.treadmillSeconds);
@@ -50,31 +50,21 @@ export default function ActiveWorkoutScreen() {
   const saveTreadmill = useWorkoutStore((s) => s.saveTreadmill);
   const clearCardio = useWorkoutStore((s) => s.clearCardio);
 
-  // App store
   const dayTypes = useAppStore((s) => s.dayTypes);
   const refreshNextDayInfo = useAppStore((s) => s.refreshNextDayInfo);
 
-  // Local state
+  // ---- All useState / useRef ----
   const [showFinishModal, setShowFinishModal] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
-  // Guard: if no session, go back
-  if (!session) {
-    return null;
-  }
+  // ---- All useEffect ----
+  useEffect(() => {
+    if (!session && !isActive) {
+      navigation.goBack();
+    }
+  }, [session, isActive]);
 
-  const dayType = dayTypes.find((dt) => dt.id === session.dayTypeId);
-
-  // Counts (exercises only — no cardio in progress counter)
-  const exercisesDone = exercises.filter(
-    (e) => e.status === 'completed'
-  ).length;
-  const exercisesTotal = exercises.length;
-  const exercisesSkipped = exercises.filter(
-    (e) => e.status === 'skipped'
-  ).length;
-
-  // Handle set completion (starts rest timer automatically)
+  // ---- All useCallback ----
   const handleCompleteSet = useCallback(
     (exerciseIndex: number, setIndex: number, actualReps?: number) => {
       completeSet(exerciseIndex, setIndex, actualReps);
@@ -83,7 +73,6 @@ export default function ActiveWorkoutScreen() {
     [completeSet, startRestTimer]
   );
 
-  // Handle reps update on already completed set
   const handleUpdateSetReps = useCallback(
     (exerciseIndex: number, setIndex: number, reps: number) => {
       updateSetReps(exerciseIndex, setIndex, reps);
@@ -91,7 +80,6 @@ export default function ActiveWorkoutScreen() {
     [updateSetReps]
   );
 
-  // Handle skip exercise
   const handleSkipExercise = useCallback(
     (exerciseIndex: number) => {
       Alert.alert(
@@ -104,7 +92,6 @@ export default function ActiveWorkoutScreen() {
             style: 'destructive',
             onPress: () => {
               skipExercise(exerciseIndex);
-              // Auto-advance to next non-done exercise
               const nextIndex = exercises.findIndex(
                 (e, i) =>
                   i > exerciseIndex &&
@@ -112,17 +99,21 @@ export default function ActiveWorkoutScreen() {
                   e.status !== 'skipped'
               );
               if (nextIndex !== -1) {
-                handleSelectExercise(nextIndex);
+                setCurrentExercise(nextIndex);
+                flatListRef.current?.scrollToIndex({
+                  index: nextIndex,
+                  animated: true,
+                  viewPosition: 0.5,
+                });
               }
             },
           },
         ]
       );
     },
-    [skipExercise, exercises]
+    [skipExercise, exercises, setCurrentExercise]
   );
 
-  // Handle unskip exercise
   const handleUnskipExercise = useCallback(
     (exerciseIndex: number) => {
       unskipExercise(exerciseIndex);
@@ -130,7 +121,6 @@ export default function ActiveWorkoutScreen() {
     [unskipExercise]
   );
 
-  // Navigate to exercise by index
   const handleSelectExercise = useCallback(
     (index: number) => {
       setCurrentExercise(index);
@@ -143,26 +133,59 @@ export default function ActiveWorkoutScreen() {
     [setCurrentExercise]
   );
 
-  // Finish workout flow — record end time immediately, then show modal
-  const handleFinishPress = () => {
+  const handleFinishPress = useCallback(() => {
     recordEndTime();
     setShowFinishModal(true);
-  };
+  }, [recordEndTime]);
 
-  const handleFinishConfirm = async (weightAfter: number | null) => {
-    setShowFinishModal(false);
-    const finishedSession = await finishWorkout(weightAfter);
-    await refreshNextDayInfo();
-    if (finishedSession) {
-      navigation.replace('WorkoutSummary', { sessionId: finishedSession.id });
-    } else {
-      navigation.goBack();
-    }
-  };
+  const handleFinishConfirm = useCallback(
+    async (weightAfter: number | null) => {
+      setShowFinishModal(false);
+      const finishedSession = await finishWorkout(weightAfter);
+      await refreshNextDayInfo();
+      if (finishedSession) {
+        navigation.replace('WorkoutSummary', { sessionId: finishedSession.id });
+      } else {
+        navigation.goBack();
+      }
+    },
+    [finishWorkout, refreshNextDayInfo, navigation]
+  );
 
-  const handleFinishCancel = () => {
+  const handleFinishCancel = useCallback(() => {
     setShowFinishModal(false);
-  };
+  }, []);
+
+  const handleCancelWorkout = useCallback(() => {
+    Alert.alert(
+      'Отменить тренировку?',
+      'Все записанные подходы будут удалены. Это действие нельзя отменить.',
+      [
+        { text: 'Нет, продолжить', style: 'cancel' },
+        {
+          text: 'Да, отменить',
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              'Точно отменить?',
+              'Последний шанс — тренировка будет удалена безвозвратно.',
+              [
+                { text: 'Нет', style: 'cancel' },
+                {
+                  text: 'Удалить',
+                  style: 'destructive',
+                  onPress: async () => {
+                    await cancelWorkout();
+                    await refreshNextDayInfo();
+                  },
+                },
+              ]
+            );
+          },
+        },
+      ]
+    );
+  }, [cancelWorkout, refreshNextDayInfo]);
 
   const onViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
@@ -176,9 +199,9 @@ export default function ActiveWorkoutScreen() {
     viewAreaCoveragePercentThreshold: 60,
   }).current;
 
-  // Render a single exercise card
   const renderExerciseCard = useCallback(
     ({ item, index }: { item: (typeof exercises)[number]; index: number }) => {
+      if (!session) return null;
       return (
         <View style={{ width: SCREEN_WIDTH - spacing.lg * 2 }}>
           <ExerciseCard
@@ -194,7 +217,7 @@ export default function ActiveWorkoutScreen() {
       );
     },
     [
-      session.dayTypeId,
+      session,
       handleCompleteSet,
       handleUpdateSetReps,
       handleSkipExercise,
@@ -216,18 +239,38 @@ export default function ActiveWorkoutScreen() {
     []
   );
 
+  // ===== ALL HOOKS ARE ABOVE THIS LINE =====
+  // Now safe to do early return
+
+  if (!session) {
+    return (
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <View style={styles.safeArea} />
+      </SafeAreaView>
+    );
+  }
+
+  const dayType = dayTypes.find((dt) => dt.id === session.dayTypeId);
+
+  const exercisesDone = exercises.filter(
+    (e) => e.status === 'completed'
+  ).length;
+  const exercisesTotal = exercises.length;
+  const exercisesSkipped = exercises.filter(
+    (e) => e.status === 'skipped'
+  ).length;
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
-      {/* Header */}
       <WorkoutHeader
         session={session}
         dayType={dayType}
         exercisesDone={exercisesDone}
         exercisesTotal={exercisesTotal}
         onFinish={handleFinishPress}
+        onCancel={handleCancelWorkout}
       />
 
-      {/* Exercise chip navigator (no cardio chip) */}
       <View style={styles.exerciseListContainer}>
         <ExerciseList
           exercises={exercises}
@@ -236,7 +279,6 @@ export default function ActiveWorkoutScreen() {
         />
       </View>
 
-      {/* Main scrollable exercise content (exercises only) */}
       <FlatList
         ref={flatListRef}
         data={exercises}
@@ -264,10 +306,8 @@ export default function ActiveWorkoutScreen() {
         }}
       />
 
-      {/* Floating rest timer */}
       <RestTimer />
 
-      {/* Finish workout modal (multi-step: cardio → summary) */}
       <FinishWorkoutModal
         visible={showFinishModal}
         exercisesDone={exercisesDone}

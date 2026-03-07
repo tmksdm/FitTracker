@@ -19,7 +19,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, spacing, fontSize, borderRadius, getDayTypeColor } from '../theme';
 import { useAppStore } from '../stores/appStore';
 import { workoutRepo } from '../db';
-import type { WorkoutSession } from '../types';
+import type { WorkoutSession, CardioLog } from '../types';
 import type { ExerciseSummary } from '../db/repositories/workoutRepository';
 import type { RootStackParamList } from '../navigation/types';
 
@@ -75,6 +75,12 @@ function calcAvgWeight(before: number | null, after: number | null): string {
   if (before !== null) return formatWeight(before);
   if (after !== null) return formatWeight(after);
   return '—';
+}
+
+function formatSecondsAsDuration(totalSeconds: number): string {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
 // ---- Sub-components ----
@@ -219,6 +225,7 @@ export default function WorkoutDetailScreen() {
 
   const [session, setSession] = useState<WorkoutSession | null>(null);
   const [exerciseSummaries, setExerciseSummaries] = useState<ExerciseSummary[]>([]);
+  const [cardioLogs, setCardioLogs] = useState<CardioLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -228,12 +235,14 @@ export default function WorkoutDetailScreen() {
   async function loadData() {
     setIsLoading(true);
     try {
-      const [sess, summaries] = await Promise.all([
+      const [sess, summaries, cardio] = await Promise.all([
         workoutRepo.getWorkoutSessionById(sessionId),
         workoutRepo.getSessionExerciseSummary(sessionId),
+        workoutRepo.getCardioBySession(sessionId),
       ]);
       setSession(sess);
       setExerciseSummaries(summaries);
+      setCardioLogs(cardio);
     } catch (error) {
       console.error('Failed to load workout detail:', error);
     } finally {
@@ -428,6 +437,34 @@ export default function WorkoutDetailScreen() {
             ))}
           </View>
         </View>
+
+        {/* Cardio */}
+        {cardioLogs.length > 0 && (
+          <View style={styles.exerciseSection}>
+            <Text style={styles.sectionTitle}>Кардио</Text>
+            <View style={styles.exerciseList}>
+              {cardioLogs.map((cardio) => (
+                <View key={cardio.id} style={exRowStyles.container}>
+                  <View style={exRowStyles.nameRow}>
+                    <MaterialCommunityIcons
+                      name={cardio.type === 'jump_rope' ? 'jump-rope' : 'run'}
+                      size={18}
+                      color={colors.info}
+                    />
+                    <Text style={exRowStyles.name}>
+                      {cardio.type === 'jump_rope' ? 'Скакалка' : 'Бег 3 км'}
+                    </Text>
+                  </View>
+                  <Text style={{ color: colors.textSecondary, fontSize: fontSize.sm, marginLeft: 26 }}>
+                    {cardio.type === 'jump_rope'
+                      ? `${cardio.count ?? 0} прыжков`
+                      : formatSecondsAsDuration(cardio.durationSeconds ?? 0)}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
 
         {/* Notes */}
         {session.notes && (
