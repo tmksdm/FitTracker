@@ -5,12 +5,10 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Text, View, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, fontSize } from '../theme';
 import type { RootStackParamList, MainTabParamList } from './types';
 
-// ---- Real screens ----
 import {
   HomeScreen,
   ActiveWorkoutScreen,
@@ -18,45 +16,9 @@ import {
   HistoryScreen,
   WorkoutDetailScreen,
   ExerciseEditorScreen,
+  AnalyticsScreen,
+  SettingsScreen,
 } from '../screens';
-
-// ---- Placeholder screens (will be replaced with real ones) ----
-
-function PlaceholderScreen({ name }: { name: string }) {
-  return (
-    <View style={placeholderStyles.container}>
-      <Text style={placeholderStyles.text}>{name}</Text>
-      <Text style={placeholderStyles.subtext}>Скоро будет реализовано</Text>
-    </View>
-  );
-}
-
-const placeholderStyles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  text: {
-    color: colors.text,
-    fontSize: fontSize.xl,
-    fontWeight: '600',
-  },
-  subtext: {
-    color: colors.textMuted,
-    fontSize: fontSize.md,
-    marginTop: 8,
-  },
-});
-
-// Placeholder screen components
-function AnalyticsScreen() {
-  return <PlaceholderScreen name="Аналитика" />;
-}
-function SettingsScreen() {
-  return <PlaceholderScreen name="Настройки" />;
-}
 
 // ---- Navigators ----
 

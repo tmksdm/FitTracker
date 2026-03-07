@@ -99,9 +99,10 @@ export const SEED_DAY_TYPES_SQL = `
     (3, 'Bench', 'Жим',    'normal');
 `;
 
-// Seed-упражнения для тестирования (День приседа)
+// Seed-упражнения для всех трёх типов дней
 // Фиксированные UUID чтобы INSERT OR IGNORE работал идемпотентно
 export const SEED_EXERCISES_SQL = `
+  -- День 1: Присед
   INSERT OR IGNORE INTO exercises
     (id, day_type_id, name, sort_order, has_added_weight,
      working_weight, weight_increment, warmup_1_percent, warmup_2_percent,
@@ -141,5 +142,89 @@ export const SEED_EXERCISES_SQL = `
     ('seed-squat-07', 1, 'Пресс верхний',                7, 0,
       NULL, 0, NULL, NULL,
       12, 10, 8, 4,
+      3, 0, NULL, NULL, 1);
+
+  -- День 2: Тяга
+  INSERT OR IGNORE INTO exercises
+    (id, day_type_id, name, sort_order, has_added_weight,
+     working_weight, weight_increment, warmup_1_percent, warmup_2_percent,
+     warmup_1_reps, warmup_2_reps, max_reps_per_set, min_reps_per_set,
+     num_working_sets, is_timed, timer_duration_seconds, timer_prep_seconds, is_active)
+  VALUES
+    ('seed-pull-01', 2, 'Становая тяга',                 1, 1,
+      100, 2.5, 60, 80,
+      12, 10, 8, 4,
+      3, 0, NULL, NULL, 1),
+
+    ('seed-pull-02', 2, 'Жим стоя',                      2, 1,
+      40, 2.5, 60, 80,
+      12, 10, 8, 4,
+      3, 0, NULL, NULL, 1),
+
+    ('seed-pull-03', 2, 'Тяга в наклоне',                3, 1,
+      60, 2.5, 60, 80,
+      12, 10, 8, 4,
+      3, 0, NULL, NULL, 1),
+
+    ('seed-pull-04', 2, 'Сгибание ног в тренажёре',      4, 1,
+      35, 2.5, 60, 80,
+      12, 10, 8, 4,
+      3, 0, NULL, NULL, 1),
+
+    ('seed-pull-05', 2, 'Подъём на бицепс',              5, 1,
+      25, 2.5, 60, 80,
+      12, 10, 8, 4,
+      3, 0, NULL, NULL, 1),
+
+    ('seed-pull-06', 2, 'Гиперэкстензия',                6, 0,
+      NULL, 0, NULL, NULL,
+      12, 10, 8, 0,
+      3, 0, NULL, NULL, 1),
+
+    ('seed-pull-07', 2, 'Пресс нижний',                  7, 0,
+      NULL, 0, NULL, NULL,
+      12, 10, 8, 0,
+      3, 0, NULL, NULL, 1);
+
+  -- День 3: Жим
+  INSERT OR IGNORE INTO exercises
+    (id, day_type_id, name, sort_order, has_added_weight,
+     working_weight, weight_increment, warmup_1_percent, warmup_2_percent,
+     warmup_1_reps, warmup_2_reps, max_reps_per_set, min_reps_per_set,
+     num_working_sets, is_timed, timer_duration_seconds, timer_prep_seconds, is_active)
+  VALUES
+    ('seed-bench-01', 3, 'Жим лёжа',                     1, 1,
+      70, 2.5, 60, 80,
+      12, 10, 8, 4,
+      3, 0, NULL, NULL, 1),
+
+    ('seed-bench-02', 3, 'Приседания в Гакке',            2, 1,
+      60, 2.5, 60, 80,
+      12, 10, 8, 4,
+      3, 0, NULL, NULL, 1),
+
+    ('seed-bench-03', 3, 'Разводка гантелей',             3, 1,
+      14, 2, 60, 80,
+      12, 10, 8, 4,
+      3, 0, NULL, NULL, 1),
+
+    ('seed-bench-04', 3, 'Трицепс на блоке',              4, 1,
+      30, 2.5, 60, 80,
+      12, 10, 8, 4,
+      3, 0, NULL, NULL, 1),
+
+    ('seed-bench-05', 3, 'Жим гантелей на наклонной',     5, 1,
+      22, 2, 60, 80,
+      12, 10, 8, 4,
+      3, 0, NULL, NULL, 1),
+
+    ('seed-bench-06', 3, 'Отжимания',                     6, 0,
+      NULL, 0, NULL, NULL,
+      12, 10, 8, 4,
+      3, 0, NULL, NULL, 1),
+
+    ('seed-bench-07', 3, 'Пресс верхний',                 7, 0,
+      NULL, 0, NULL, NULL,
+      12, 10, 8, 0,
       3, 0, NULL, NULL, 1);
 `;
