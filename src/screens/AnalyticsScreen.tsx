@@ -11,7 +11,6 @@ import {
   StyleSheet,
   ActivityIndicator,
   Dimensions,
-  FlatList,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -40,7 +39,12 @@ import type {
 import type { DayTypeId } from '../types';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
-const CHART_WIDTH = SCREEN_WIDTH - spacing.lg * 2;
+// paddingRight in react-native-chart-kit is actually the LEFT margin
+// reserved for Y-axis labels. Default is 64.
+const CHART_Y_AXIS_WIDTH = 56;
+const CHART_CONTAINER_HPADDING = spacing.lg;
+const CHART_WIDTH =
+  SCREEN_WIDTH - CHART_CONTAINER_HPADDING * 2 + CHART_Y_AXIS_WIDTH - 16;
 const CHART_HEIGHT = 200;
 
 // ---- Tab definitions ----
@@ -74,7 +78,7 @@ const chartConfig = {
   backgroundGradientTo: colors.card,
   decimalCount: 0,
   color: (opacity = 1) => `rgba(76, 175, 80, ${opacity})`,
-  labelColor: () => colors.textMuted,
+  labelColor: () => colors.textSecondary,
   propsForDots: {
     r: '4',
     strokeWidth: '2',
@@ -120,6 +124,11 @@ function formatShortDate(isoString: string): string {
   return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
 }
 
+/** Shorten month label for chart axis: "Ноя 2025" → "Ноя 25" */
+function shortenMonthLabel(label: string): string {
+  return label.replace(/\s(\d{4})$/, (_, year) => ` ${year.slice(2)}`);
+}
+
 // ---- Helpers for chart data ----
 
 /** Pick evenly spaced labels so that the chart doesn't become unreadable */
@@ -150,7 +159,6 @@ function buildChartData(
         data: data.length > 0 ? data : [0],
         color: lineColor
           ? (opacity = 1) => {
-              // Parse hex to rgba
               const hex = lineColor.replace('#', '');
               const r = parseInt(hex.substring(0, 2), 16);
               const g = parseInt(hex.substring(2, 4), 16);
@@ -162,6 +170,15 @@ function buildChartData(
       },
     ],
   };
+}
+
+/** Build a color function from hex */
+function colorFromHex(hex: string) {
+  const clean = hex.replace('#', '');
+  const r = parseInt(clean.substring(0, 2), 16);
+  const g = parseInt(clean.substring(2, 4), 16);
+  const b = parseInt(clean.substring(4, 6), 16);
+  return (opacity = 1) => `rgba(${r}, ${g}, ${b}, ${opacity})`;
 }
 
 // ---- Empty state component ----
@@ -200,6 +217,13 @@ function StatRow({
     </View>
   );
 }
+
+// ---- Shared chart style ----
+// paddingRight in react-native-chart-kit = left space for Y labels
+const chartStyle = {
+  borderRadius: borderRadius.lg,
+  paddingRight: CHART_Y_AXIS_WIDTH,
+};
 
 // ==========================================
 // MAIN COMPONENT
@@ -309,7 +333,6 @@ export default function AnalyticsScreen() {
     }, [loadAllData])
   );
 
-  // Reload tonnage when filter changes
   const handleDayTypeFilterChange = useCallback(
     async (filter: DayTypeFilter) => {
       setDayTypeFilter(filter);
@@ -325,6 +348,8 @@ export default function AnalyticsScreen() {
       dayTypeFilter === 'all'
         ? colors.primary
         : getDayTypeColor(dayTypeFilter as number);
+
+    const filterColorFn = colorFromHex(filterColor);
 
     return (
       <ScrollView
@@ -384,13 +409,7 @@ export default function AnalyticsScreen() {
                 height={CHART_HEIGHT}
                 chartConfig={{
                   ...chartConfig,
-                  color: (opacity = 1) => {
-                    const hex = filterColor.replace('#', '');
-                    const r = parseInt(hex.substring(0, 2), 16);
-                    const g = parseInt(hex.substring(2, 4), 16);
-                    const b = parseInt(hex.substring(4, 6), 16);
-                    return `rgba(${r}, ${g}, ${b}, ${opacity})`;
-                  },
+                  color: filterColorFn,
                   propsForDots: {
                     r: tonnageWorkouts.length > 30 ? '2' : '4',
                     strokeWidth: '1',
@@ -398,13 +417,14 @@ export default function AnalyticsScreen() {
                   },
                 }}
                 bezier
-                style={styles.chart}
+                style={chartStyle}
                 withInnerLines={true}
                 withOuterLines={false}
                 withVerticalLines={false}
                 fromZero={false}
                 yAxisSuffix=""
                 segments={4}
+                formatYLabel={(v) => Math.round(Number(v)).toString()}
               />
             </View>
           )}
@@ -429,7 +449,7 @@ export default function AnalyticsScreen() {
             <View style={styles.chartContainer}>
               <LineChart
                 data={buildChartData(
-                  monthlyTonnage.map((m) => m.label),
+                  monthlyTonnage.map((m) => shortenMonthLabel(m.label)),
                   monthlyTonnage.map((m) => m.avgTotalKg),
                   6,
                   filterColor
@@ -438,13 +458,7 @@ export default function AnalyticsScreen() {
                 height={CHART_HEIGHT}
                 chartConfig={{
                   ...chartConfig,
-                  color: (opacity = 1) => {
-                    const hex = filterColor.replace('#', '');
-                    const r = parseInt(hex.substring(0, 2), 16);
-                    const g = parseInt(hex.substring(2, 4), 16);
-                    const b = parseInt(hex.substring(4, 6), 16);
-                    return `rgba(${r}, ${g}, ${b}, ${opacity})`;
-                  },
+                  color: filterColorFn,
                   propsForDots: {
                     r: '4',
                     strokeWidth: '2',
@@ -452,13 +466,14 @@ export default function AnalyticsScreen() {
                   },
                 }}
                 bezier
-                style={styles.chart}
+                style={chartStyle}
                 withInnerLines={true}
                 withOuterLines={false}
                 withVerticalLines={false}
                 fromZero={false}
                 yAxisSuffix=""
                 segments={4}
+                formatYLabel={(v) => Math.round(Number(v)).toString()}
               />
             </View>
           )}
@@ -510,7 +525,6 @@ export default function AnalyticsScreen() {
         style={styles.tabContent}
         contentContainerStyle={styles.tabContentInner}
       >
-        {/* Trend chart */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Динамика веса</Text>
           {bodyWeightTrend.length < 2 ? (
@@ -537,7 +551,7 @@ export default function AnalyticsScreen() {
                   },
                 }}
                 bezier
-                style={styles.chart}
+                style={chartStyle}
                 withInnerLines={true}
                 withOuterLines={false}
                 withVerticalLines={false}
@@ -549,7 +563,6 @@ export default function AnalyticsScreen() {
           )}
         </View>
 
-        {/* Monthly averages */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Среднее за месяц</Text>
           {monthlyBodyWeight.length === 0 ? (
@@ -604,7 +617,7 @@ export default function AnalyticsScreen() {
             <View style={styles.chartContainer}>
               <LineChart
                 data={buildChartData(
-                  monthlyDuration.map((m) => m.label),
+                  monthlyDuration.map((m) => shortenMonthLabel(m.label)),
                   monthlyDuration.map((m) => m.avgDurationMin),
                   6,
                   colors.info
@@ -622,13 +635,14 @@ export default function AnalyticsScreen() {
                   },
                 }}
                 bezier
-                style={styles.chart}
+                style={chartStyle}
                 withInnerLines={true}
                 withOuterLines={false}
                 withVerticalLines={false}
                 fromZero={false}
-                yAxisSuffix=""
+                yAxisSuffix=" м"
                 segments={4}
+                formatYLabel={(v) => Math.round(Number(v)).toString()}
               />
             </View>
           )}
@@ -680,7 +694,7 @@ export default function AnalyticsScreen() {
               <View style={styles.chartContainer}>
                 <LineChart
                   data={buildChartData(
-                    monthlyRunTime.map((m) => m.label),
+                    monthlyRunTime.map((m) => shortenMonthLabel(m.label)),
                     monthlyRunTime.map((m) => Math.round(m.avgDurationSec / 60)),
                     6,
                     '#66BB6A'
@@ -698,13 +712,14 @@ export default function AnalyticsScreen() {
                     },
                   }}
                   bezier
-                  style={styles.chart}
+                  style={chartStyle}
                   withInnerLines={true}
                   withOuterLines={false}
                   withVerticalLines={false}
                   fromZero={false}
                   yAxisSuffix=" мин"
                   segments={4}
+                  formatYLabel={(v) => Math.round(Number(v)).toString()}
                 />
               </View>
               <View style={styles.statsCard}>
@@ -730,7 +745,6 @@ export default function AnalyticsScreen() {
   function renderExerciseTab() {
     const dayTypes = useAppStore.getState().dayTypes;
 
-    // Group exercises by day type
     const groupedExercises = new Map<DayTypeId, ExercisePickerItem[]>();
     for (const ex of exercises) {
       if (!groupedExercises.has(ex.dayTypeId)) {
@@ -747,12 +761,13 @@ export default function AnalyticsScreen() {
       ? getDayTypeColor(selectedExercise.dayTypeId)
       : colors.primary;
 
+    const selectedColorFn = colorFromHex(selectedColor);
+
     return (
       <ScrollView
         style={styles.tabContent}
         contentContainerStyle={styles.tabContentInner}
       >
-        {/* Exercise picker */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Выберите упражнение</Text>
 
@@ -801,7 +816,6 @@ export default function AnalyticsScreen() {
           )}
         </View>
 
-        {/* Progress chart and data */}
         {selectedExercise && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{selectedExercise.name}</Text>
@@ -810,7 +824,6 @@ export default function AnalyticsScreen() {
               <EmptyState message="Нет данных для этого упражнения" />
             ) : (
               <>
-                {/* Weight chart (for weighted exercises) */}
                 {selectedExercise.hasAddedWeight &&
                   exerciseProgress.some((p) => p.workingWeight !== null) && (
                     <>
@@ -832,13 +845,7 @@ export default function AnalyticsScreen() {
                             height={CHART_HEIGHT}
                             chartConfig={{
                               ...chartConfig,
-                              color: (opacity = 1) => {
-                                const hex = selectedColor.replace('#', '');
-                                const r = parseInt(hex.substring(0, 2), 16);
-                                const g = parseInt(hex.substring(2, 4), 16);
-                                const b = parseInt(hex.substring(4, 6), 16);
-                                return `rgba(${r}, ${g}, ${b}, ${opacity})`;
-                              },
+                              color: selectedColorFn,
                               propsForDots: {
                                 r: '4',
                                 strokeWidth: '2',
@@ -846,7 +853,7 @@ export default function AnalyticsScreen() {
                               },
                             }}
                             bezier
-                            style={styles.chart}
+                            style={chartStyle}
                             withInnerLines={true}
                             withOuterLines={false}
                             withVerticalLines={false}
@@ -865,7 +872,6 @@ export default function AnalyticsScreen() {
                     </>
                   )}
 
-                {/* Reps chart */}
                 <Text style={styles.subsectionTitle}>Повторения (сумма рабочих)</Text>
                 {exerciseProgress.length >= 2 ? (
                   <View style={styles.chartContainer}>
@@ -880,13 +886,7 @@ export default function AnalyticsScreen() {
                       height={CHART_HEIGHT}
                       chartConfig={{
                         ...chartConfig,
-                        color: (opacity = 1) => {
-                          const hex = selectedColor.replace('#', '');
-                          const r = parseInt(hex.substring(0, 2), 16);
-                          const g = parseInt(hex.substring(2, 4), 16);
-                          const b = parseInt(hex.substring(4, 6), 16);
-                          return `rgba(${r}, ${g}, ${b}, ${opacity})`;
-                        },
+                        color: selectedColorFn,
                         propsForDots: {
                           r: '4',
                           strokeWidth: '2',
@@ -894,13 +894,14 @@ export default function AnalyticsScreen() {
                         },
                       }}
                       bezier
-                      style={styles.chart}
+                      style={chartStyle}
                       withInnerLines={true}
                       withOuterLines={false}
                       withVerticalLines={false}
                       fromZero={false}
                       yAxisSuffix=""
                       segments={4}
+                      formatYLabel={(v) => Math.round(Number(v)).toString()}
                     />
                   </View>
                 ) : (
@@ -912,7 +913,6 @@ export default function AnalyticsScreen() {
                   </View>
                 )}
 
-                {/* History table */}
                 <Text style={styles.subsectionTitle}>История</Text>
                 <View style={styles.statsCard}>
                   {exerciseProgress
@@ -944,8 +944,6 @@ export default function AnalyticsScreen() {
       </ScrollView>
     );
   }
-
-  // ---- Tab content router ----
 
   function renderTabContent() {
     switch (activeTab) {
@@ -981,24 +979,25 @@ export default function AnalyticsScreen() {
         <Text style={styles.title}>Статистика</Text>
       </View>
 
-      {/* Tab bar */}
-      <FlatList
+      {/* Tab bar — ScrollView with fixed height instead of FlatList */}
+      <ScrollView
         horizontal
-        data={TABS}
-        keyExtractor={(item) => item.key}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.tabBar}
-        renderItem={({ item }) => {
+        style={styles.tabBarScroll}
+      >
+        {TABS.map((item) => {
           const isActive = activeTab === item.key;
           return (
             <TouchableOpacity
+              key={item.key}
               style={[styles.tab, isActive && styles.tabActive]}
               onPress={() => setActiveTab(item.key)}
               activeOpacity={0.7}
             >
               <MaterialCommunityIcons
                 name={item.icon as any}
-                size={18}
+                size={14}
                 color={isActive ? colors.primary : colors.textMuted}
               />
               <Text
@@ -1011,8 +1010,8 @@ export default function AnalyticsScreen() {
               </Text>
             </TouchableOpacity>
           );
-        }}
-      />
+        })}
+      </ScrollView>
 
       {/* Tab content */}
       {renderTabContent()}
@@ -1034,27 +1033,32 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.sm,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xs,
   },
   title: {
     color: colors.text,
-    fontSize: fontSize.xxl,
+    fontSize: fontSize.xl,
     fontWeight: '700',
   },
 
-  // Tab bar
+  // Tab bar — horizontal scroll that shrinks to content height
+  tabBarScroll: {
+    flexGrow: 0,
+    flexShrink: 0,
+  },
   tabBar: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
-    gap: spacing.sm,
+    gap: spacing.xs + 2,
+    alignItems: 'center',
   },
   tab: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: borderRadius.round,
     backgroundColor: colors.surface,
     borderWidth: 1,
@@ -1066,7 +1070,7 @@ const styles = StyleSheet.create({
   },
   tabText: {
     color: colors.textMuted,
-    fontSize: fontSize.sm,
+    fontSize: fontSize.xs,
     fontWeight: '600',
   },
   tabTextActive: {
@@ -1089,17 +1093,17 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     color: colors.text,
-    fontSize: fontSize.lg,
+    fontSize: fontSize.md,
     fontWeight: '700',
   },
   subsectionTitle: {
     color: colors.textSecondary,
-    fontSize: fontSize.md,
+    fontSize: fontSize.sm,
     fontWeight: '600',
     marginTop: spacing.sm,
   },
 
-  // Filter chips (for tonnage day type filter)
+  // Filter chips
   filterRow: {
     flexDirection: 'row',
     gap: spacing.sm,
@@ -1118,18 +1122,15 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // Chart
+  // Chart — no overflow:hidden so Y-axis labels are visible
   chartContainer: {
     borderRadius: borderRadius.lg,
-    overflow: 'hidden',
     backgroundColor: colors.card,
   },
-  chart: {
-    borderRadius: borderRadius.lg,
-    paddingRight: spacing.md,
-  },
+  // (chartStyle is defined as a const above, not in StyleSheet,
+  //  because react-native-chart-kit reads paddingRight from style prop)
 
-  // Stats card (table of values)
+  // Stats card
   statsCard: {
     backgroundColor: colors.card,
     borderRadius: borderRadius.lg,
@@ -1162,7 +1163,7 @@ const styles = StyleSheet.create({
     fontSize: fontSize.xs,
   },
 
-  // Single stat card (when only 1 data point)
+  // Single stat card
   singleStatCard: {
     backgroundColor: colors.card,
     borderRadius: borderRadius.lg,
