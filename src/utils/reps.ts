@@ -155,6 +155,6 @@ export function determineWeightChange(
   const minTotal = minRepsPerSet * numSets;
 
   if (actualTotal >= maxTotal) return 'increase';
-  if (actualTotal <= minTotal) return 'decrease';
+  if (actualTotal < minTotal) return 'decrease';
   return 'none';
 }

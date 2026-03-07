@@ -179,16 +179,32 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
             await workoutRepo.getLastWorkingLogsForExercise(exercise.id);
 
           if (lastLogs.length > 0) {
-            const previousTotal = lastLogs.reduce(
-              (sum, log) => sum + log.actualReps,
-              0
-            );
-            targetRepsPerSet = calculateNextTargetReps(
-              previousTotal,
-              exercise.numWorkingSets,
-              exercise.maxRepsPerSet,
-              exercise.minRepsPerSet
-            );
+            const lastWeight = lastLogs[0].weight;
+            const currentWeight = exercise.workingWeight ?? 0;
+            const weightChanged =
+              exercise.hasAddedWeight && lastWeight !== currentWeight;
+
+            if (weightChanged) {
+              // Weight was increased or decreased since last session —
+              // reset target reps to max (e.g. 8+8+8)
+              targetRepsPerSet = distributeReps(
+                exercise.maxRepsPerSet * exercise.numWorkingSets,
+                exercise.numWorkingSets,
+                exercise.maxRepsPerSet,
+                exercise.minRepsPerSet
+              );
+            } else {
+              const previousTotal = lastLogs.reduce(
+                (sum, log) => sum + log.actualReps,
+                0
+              );
+              targetRepsPerSet = calculateNextTargetReps(
+                previousTotal,
+                exercise.numWorkingSets,
+                exercise.maxRepsPerSet,
+                exercise.minRepsPerSet
+              );
+            }
           } else {
             targetRepsPerSet = getDefaultTargetReps(exercise.numWorkingSets);
           }
