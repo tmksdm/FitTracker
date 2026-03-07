@@ -16,10 +16,10 @@ interface WorkoutHeaderProps {
   onFinish: () => void;
 }
 
-function formatElapsed(startIso: string): string {
+function formatElapsed(startIso: string, endIso: string | null): string {
   const startMs = new Date(startIso).getTime();
-  const nowMs = Date.now();
-  const diffSec = Math.max(0, Math.floor((nowMs - startMs) / 1000));
+  const endMs = endIso ? new Date(endIso).getTime() : Date.now();
+  const diffSec = Math.max(0, Math.floor((endMs - startMs) / 1000));
 
   const hours = Math.floor(diffSec / 3600);
   const minutes = Math.floor((diffSec % 3600) / 60);
@@ -42,14 +42,18 @@ export default function WorkoutHeader({
 }: WorkoutHeaderProps) {
   const [elapsed, setElapsed] = useState('0:00');
 
-  // Update elapsed time every second
+  // Update elapsed time every second (stops when timeEnd is set)
   useEffect(() => {
-    setElapsed(formatElapsed(session.timeStart));
+    setElapsed(formatElapsed(session.timeStart, session.timeEnd ?? null));
+
+    // If timeEnd is set, time is frozen — no interval needed
+    if (session.timeEnd) return;
+
     const interval = setInterval(() => {
-      setElapsed(formatElapsed(session.timeStart));
+      setElapsed(formatElapsed(session.timeStart, null));
     }, 1000);
     return () => clearInterval(interval);
-  }, [session.timeStart]);
+  }, [session.timeStart, session.timeEnd]);
 
   const accentColor = dayType ? getDayTypeColor(dayType.id) : colors.primary;
   const directionLabel = session.direction === 'normal' ? 'Прямой' : 'Обратный';

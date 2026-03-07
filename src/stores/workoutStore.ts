@@ -83,6 +83,7 @@ export interface WorkoutState {
     weightBefore: number | null
   ) => Promise<void>;
 
+  recordEndTime: () => void;
   finishWorkout: (weightAfter: number | null) => Promise<WorkoutSession | null>;
   cancelWorkout: () => void;
 
@@ -271,6 +272,20 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   },
 
   // =======================================
+  // RECORD END TIME (when user taps "Завершить" — before cardio)
+  // =======================================
+  recordEndTime: () => {
+    const state = get();
+    if (!state.session || state.session.timeEnd) return;
+    set({
+      session: {
+        ...state.session,
+        timeEnd: new Date().toISOString(),
+      },
+    });
+  },
+
+  // =======================================
   // FINISH WORKOUT
   // =======================================
   finishWorkout: async (weightAfter: number | null) => {
@@ -344,8 +359,12 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
         }
       }
 
-      // 3. Finish the session in DB
-      await workoutRepo.finishWorkoutSession(state.session.id, weightAfter);
+      // 3. Finish the session in DB (use already-recorded timeEnd)
+      await workoutRepo.finishWorkoutSession(
+        state.session.id,
+        weightAfter,
+        state.session.timeEnd ?? new Date().toISOString()
+      );
 
       // 3b. Save cardio log if recorded
       if (state.isCardioCompleted && state.cardioType) {

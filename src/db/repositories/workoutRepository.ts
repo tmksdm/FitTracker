@@ -62,10 +62,10 @@ export async function createWorkoutSession(data: {
 
 export async function finishWorkoutSession(
   id: string,
-  weightAfter: number | null
+  weightAfter: number | null,
+  timeEnd: string
 ): Promise<void> {
   const db = await getDatabase();
-  const now = new Date().toISOString();
 
   // Считаем общий тоннаж
   const result = await db.getFirstAsync<{ total: number }>(
@@ -81,7 +81,7 @@ export async function finishWorkoutSession(
     `UPDATE workout_sessions
      SET time_end = ?, weight_after = ?, total_kg = ?
      WHERE id = ?`,
-    [now, weightAfter, totalKg, id]
+    [timeEnd, weightAfter, totalKg, id]
   );
 }
 

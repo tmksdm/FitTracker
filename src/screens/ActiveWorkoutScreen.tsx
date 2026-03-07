@@ -16,7 +16,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useWorkoutStore } from '../stores/workoutStore';
 import { useAppStore } from '../stores/appStore';
-import { WorkoutHeader, ExerciseList, ExerciseCard, RestTimer, FinishWorkoutModal, CardioCard } from '../components';
+import { WorkoutHeader, ExerciseList, ExerciseCard, RestTimer, FinishWorkoutModal } from '../components';
 import { colors, spacing } from '../theme';
 import type { RootStackParamList } from '../navigation/types';
 
@@ -39,13 +39,16 @@ export default function ActiveWorkoutScreen() {
   const finishWorkout = useWorkoutStore((s) => s.finishWorkout);
   const cancelWorkout = useWorkoutStore((s) => s.cancelWorkout);
   const startRestTimer = useWorkoutStore((s) => s.startRestTimer);
+  const recordEndTime = useWorkoutStore((s) => s.recordEndTime);
+
+  // Cardio state (passed to FinishWorkoutModal)
   const cardioType = useWorkoutStore((s) => s.cardioType);
   const jumpRopeCount = useWorkoutStore((s) => s.jumpRopeCount);
   const treadmillSeconds = useWorkoutStore((s) => s.treadmillSeconds);
   const isCardioCompleted = useWorkoutStore((s) => s.isCardioCompleted);
   const saveJumpRope = useWorkoutStore((s) => s.saveJumpRope);
   const saveTreadmill = useWorkoutStore((s) => s.saveTreadmill);
-  const clearCardio = useWorkoutStore((s) => s.clearCardio);  
+  const clearCardio = useWorkoutStore((s) => s.clearCardio);
 
   // App store
   const dayTypes = useAppStore((s) => s.dayTypes);
@@ -62,14 +65,11 @@ export default function ActiveWorkoutScreen() {
 
   const dayType = dayTypes.find((dt) => dt.id === session.dayTypeId);
 
-  // Counts
+  // Counts (exercises only — no cardio in progress counter)
   const exercisesDone = exercises.filter(
     (e) => e.status === 'completed'
   ).length;
   const exercisesTotal = exercises.length;
-  // Total including cardio for header display
-  const totalWithCardio = exercisesTotal + 1;
-  const doneWithCardio = exercisesDone + (isCardioCompleted ? 1 : 0);
   const exercisesSkipped = exercises.filter(
     (e) => e.status === 'skipped'
   ).length;
@@ -133,21 +133,19 @@ export default function ActiveWorkoutScreen() {
   // Navigate to exercise by index
   const handleSelectExercise = useCallback(
     (index: number) => {
-      // Only update exercise index for actual exercises
-      if (index < exercises.length) {
-        setCurrentExercise(index);
-      }
+      setCurrentExercise(index);
       flatListRef.current?.scrollToIndex({
         index,
         animated: true,
         viewPosition: 0.5,
       });
     },
-    [setCurrentExercise, exercises.length]
+    [setCurrentExercise]
   );
 
-  // Finish workout flow
+  // Finish workout flow — record end time immediately, then show modal
   const handleFinishPress = () => {
+    recordEndTime();
     setShowFinishModal(true);
   };
 
@@ -169,11 +167,7 @@ export default function ActiveWorkoutScreen() {
   const onViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
       if (viewableItems.length > 0 && viewableItems[0].index !== null) {
-        const idx = viewableItems[0].index;
-        // Don't update exercise index when viewing cardio
-        if (idx < (useWorkoutStore.getState().exercises.length)) {
-          setCurrentExercise(idx);
-        }
+        setCurrentExercise(viewableItems[0].index);
       }
     }
   ).current;
@@ -183,29 +177,13 @@ export default function ActiveWorkoutScreen() {
   }).current;
 
   // Render a single exercise card
-  const renderListItem = useCallback(
-    ({ item }: { item: ListItem }) => {
-      if (item.type === 'cardio') {
-        return (
-          <View style={{ width: SCREEN_WIDTH - spacing.lg * 2 }}>
-            <CardioCard
-              dayTypeId={session.dayTypeId}
-              jumpRopeCount={jumpRopeCount}
-              treadmillSeconds={treadmillSeconds}
-              isCompleted={isCardioCompleted}
-              onSaveJumpRope={saveJumpRope}
-              onSaveTreadmill={saveTreadmill}
-              onClear={clearCardio}
-            />
-          </View>
-        );
-      }
-
+  const renderExerciseCard = useCallback(
+    ({ item, index }: { item: (typeof exercises)[number]; index: number }) => {
       return (
         <View style={{ width: SCREEN_WIDTH - spacing.lg * 2 }}>
           <ExerciseCard
-            activeExercise={item.data}
-            exerciseIndex={item.index}
+            activeExercise={item}
+            exerciseIndex={index}
             dayTypeId={session.dayTypeId}
             onCompleteSet={handleCompleteSet}
             onUpdateSetReps={handleUpdateSetReps}
@@ -221,28 +199,7 @@ export default function ActiveWorkoutScreen() {
       handleUpdateSetReps,
       handleSkipExercise,
       handleUnskipExercise,
-      jumpRopeCount,
-      treadmillSeconds,
-      isCardioCompleted,
-      saveJumpRope,
-      saveTreadmill,
-      clearCardio,
     ]
-  );
-
-  const listKeyExtractor = useCallback(
-    (item: ListItem) =>
-      item.type === 'cardio' ? 'cardio' : item.data.exercise.id,
-    []
-  );
-
-  const listGetItemLayout = useCallback(
-    (_: any, index: number) => ({
-      length: SCREEN_WIDTH - spacing.lg * 2,
-      offset: (SCREEN_WIDTH - spacing.lg * 2 + spacing.md) * index,
-      index,
-    }),
-    []
   );
 
   const keyExtractor = useCallback(
@@ -259,16 +216,6 @@ export default function ActiveWorkoutScreen() {
     []
   );
 
-  // Build combined list: exercises + cardio
-  type ListItem =
-    | { type: 'exercise'; data: (typeof exercises)[number]; index: number }
-    | { type: 'cardio' };
-
-  const listData: ListItem[] = [
-    ...exercises.map((e, i) => ({ type: 'exercise' as const, data: e, index: i })),
-    { type: 'cardio' as const },
-  ];
-
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       {/* Header */}
@@ -276,27 +223,25 @@ export default function ActiveWorkoutScreen() {
         session={session}
         dayType={dayType}
         exercisesDone={exercisesDone}
-        exercisesTotal={totalWithCardio}
+        exercisesTotal={exercisesTotal}
         onFinish={handleFinishPress}
       />
 
-      {/* Exercise chip navigator */}
+      {/* Exercise chip navigator (no cardio chip) */}
       <View style={styles.exerciseListContainer}>
         <ExerciseList
           exercises={exercises}
           currentIndex={currentExerciseIndex}
-          isCardioCompleted={isCardioCompleted}
-          totalItemCount={exercises.length + 1}
           onSelect={handleSelectExercise}
         />
       </View>
 
-      {/* Main scrollable exercise content */}
+      {/* Main scrollable exercise content (exercises only) */}
       <FlatList
         ref={flatListRef}
-        data={listData}
-        renderItem={renderListItem}
-        keyExtractor={listKeyExtractor}
+        data={exercises}
+        renderItem={renderExerciseCard}
+        keyExtractor={keyExtractor}
         horizontal
         pagingEnabled
         snapToInterval={SCREEN_WIDTH - spacing.lg * 2 + spacing.md}
@@ -307,7 +252,7 @@ export default function ActiveWorkoutScreen() {
         ItemSeparatorComponent={() => <View style={{ width: spacing.md }} />}
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
-        getItemLayout={listGetItemLayout}
+        getItemLayout={getItemLayout}
         initialScrollIndex={currentExerciseIndex}
         onScrollToIndexFailed={(info) => {
           setTimeout(() => {
@@ -322,12 +267,20 @@ export default function ActiveWorkoutScreen() {
       {/* Floating rest timer */}
       <RestTimer />
 
-      {/* Finish workout modal */}
+      {/* Finish workout modal (multi-step: cardio → summary) */}
       <FinishWorkoutModal
         visible={showFinishModal}
         exercisesDone={exercisesDone}
         exercisesTotal={exercisesTotal}
         exercisesSkipped={exercisesSkipped}
+        dayTypeId={session.dayTypeId}
+        cardioType={cardioType}
+        jumpRopeCount={jumpRopeCount}
+        treadmillSeconds={treadmillSeconds}
+        isCardioCompleted={isCardioCompleted}
+        onSaveJumpRope={saveJumpRope}
+        onSaveTreadmill={saveTreadmill}
+        onClearCardio={clearCardio}
         onFinish={handleFinishConfirm}
         onCancel={handleFinishCancel}
       />

@@ -18,16 +18,12 @@ import { getStatusColor } from '../theme';
 interface ExerciseListProps {
   exercises: ActiveExercise[];
   currentIndex: number;
-  isCardioCompleted: boolean;
-  totalItemCount: number;
   onSelect: (index: number) => void;
 }
 
 export default function ExerciseList({
   exercises,
   currentIndex,
-  isCardioCompleted,
-  totalItemCount,
   onSelect,
 }: ExerciseListProps) {
   const scrollRef = useRef<ScrollView>(null);
@@ -40,8 +36,6 @@ export default function ExerciseList({
       scrollRef.current.scrollTo({ x: offset, animated: true });
     }
   }, [currentIndex]);
-
-  const cardioIndex = exercises.length;
 
   return (
     <ScrollView
@@ -96,47 +90,6 @@ export default function ExerciseList({
           </TouchableOpacity>
         );
       })}
-
-      {/* Cardio chip */}
-      <TouchableOpacity
-        key="cardio"
-        style={[
-          styles.chip,
-          currentIndex === cardioIndex && styles.chipActive,
-          currentIndex === cardioIndex && {
-            borderColor: isCardioCompleted
-              ? colors.statusCompleted
-              : colors.statusNotStarted,
-          },
-        ]}
-        onPress={() => onSelect(cardioIndex)}
-        activeOpacity={0.7}
-      >
-        <View
-          style={[
-            styles.statusDot,
-            {
-              backgroundColor: isCardioCompleted
-                ? colors.statusCompleted
-                : colors.statusNotStarted,
-            },
-          ]}
-        />
-        <Text
-          style={[
-            styles.chipText,
-            currentIndex === cardioIndex && styles.chipTextActive,
-          ]}
-          numberOfLines={1}
-        >
-          Кардио
-        </Text>
-        <MaterialCommunityIcons
-          name="heart-pulse"
-          size={12}
-          color={colors.info}
-        />
-      </TouchableOpacity>
     </ScrollView>
   );
 }
