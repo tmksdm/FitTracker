@@ -130,8 +130,12 @@ export default function ExerciseEditModal({
       warmup2Percent: form.hasAddedWeight ? (parseFloat_(form.warmup2Percent) ?? 80) : null,
       warmup1Reps: parseInt_(form.warmup1Reps) || 12,
       warmup2Reps: parseInt_(form.warmup2Reps) || 10,
-      maxRepsPerSet: parseInt_(form.maxRepsPerSet) || 8,
-      minRepsPerSet: parseInt_(form.minRepsPerSet) || 4,
+      maxRepsPerSet: form.maxRepsPerSet.trim() !== '' ? parseInt_(form.maxRepsPerSet) : 8,
+      minRepsPerSet: form.minRepsPerSet.trim() !== ''
+        ? (form.hasAddedWeight
+            ? Math.max(4, parseInt_(form.minRepsPerSet))
+            : parseInt_(form.minRepsPerSet))
+        : 4,
       numWorkingSets: parseInt_(form.numWorkingSets) || 3,
     };
 
