@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -227,6 +228,49 @@ export default function WorkoutDetailScreen() {
   const [exerciseSummaries, setExerciseSummaries] = useState<ExerciseSummary[]>([]);
   const [cardioLogs, setCardioLogs] = useState<CardioLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const refreshNextDayInfo = useAppStore((s) => s.refreshNextDayInfo);
+
+  const handleDelete = () => {
+    Alert.alert(
+      'Удалить тренировку?',
+      'Все данные этой тренировки (подходы, кардио) будут удалены безвозвратно.',
+      [
+        { text: 'Отмена', style: 'cancel' },
+        {
+          text: 'Удалить',
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              'Точно удалить?',
+              'Это действие нельзя отменить.',
+              [
+                { text: 'Нет', style: 'cancel' },
+                {
+                  text: 'Да, удалить',
+                  style: 'destructive',
+                  onPress: async () => {
+                    setIsDeleting(true);
+                    try {
+                      await workoutRepo.deleteWorkoutSession(sessionId);
+                      await refreshNextDayInfo();
+                      navigation.goBack();
+                    } catch (error) {
+                      console.error('Failed to delete workout:', error);
+                      Alert.alert('Ошибка', 'Не удалось удалить тренировку.');
+                    } finally {
+                      setIsDeleting(false);
+                    }
+                  },
+                },
+              ]
+            );
+          },
+        },
+      ]
+    );
+  };
+
 
   useEffect(() => {
     loadData();
@@ -290,8 +334,22 @@ export default function WorkoutDetailScreen() {
             {formatFullDate(session.date)}
           </Text>
         </View>
-        <View style={styles.backButton} />
-        {/* Invisible spacer to center title */}
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={handleDelete}
+          activeOpacity={0.7}
+          disabled={isDeleting}
+        >
+          {isDeleting ? (
+            <ActivityIndicator size="small" color={colors.error} />
+          ) : (
+            <MaterialCommunityIcons
+              name="delete-outline"
+              size={24}
+              color={colors.error}
+            />
+          )}
+        </TouchableOpacity>
       </View>
 
       <ScrollView
