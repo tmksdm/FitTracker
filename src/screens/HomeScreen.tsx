@@ -75,6 +75,10 @@ export default function HomeScreen() {
     setShowModal(false);
   };
 
+  const handleEditExercises = () => {
+    navigation.navigate('ExerciseEditor', { dayTypeId: nextDayTypeId });
+  };
+
   const dayType = dayTypes.find((dt) => dt.id === nextDayTypeId);
   const accentColor = getDayTypeColor(nextDayTypeId);
 
@@ -109,21 +113,37 @@ export default function HomeScreen() {
           nextDirection={nextDirection}
         />
 
-        {/* Start / Resume button */}
-        <TouchableOpacity
-          style={[styles.startButton, { backgroundColor: accentColor }]}
-          onPress={handleStartPress}
-          activeOpacity={0.8}
-        >
-          <MaterialCommunityIcons
-            name={isWorkoutActive ? 'arrow-right-circle' : 'play-circle'}
-            size={28}
-            color={colors.textOnPrimary}
-          />
-          <Text style={styles.startButtonText}>
-            {isWorkoutActive ? 'Продолжить тренировку' : 'Начать тренировку'}
-          </Text>
-        </TouchableOpacity>
+        {/* Action buttons row */}
+        <View style={styles.actionRow}>
+          {/* Start / Resume button */}
+          <TouchableOpacity
+            style={[styles.startButton, { backgroundColor: accentColor }]}
+            onPress={handleStartPress}
+            activeOpacity={0.8}
+          >
+            <MaterialCommunityIcons
+              name={isWorkoutActive ? 'arrow-right-circle' : 'play-circle'}
+              size={28}
+              color={colors.textOnPrimary}
+            />
+            <Text style={styles.startButtonText}>
+              {isWorkoutActive ? 'Продолжить' : 'Начать тренировку'}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Edit exercises button */}
+          <TouchableOpacity
+            style={styles.editButton}
+            onPress={handleEditExercises}
+            activeOpacity={0.7}
+          >
+            <MaterialCommunityIcons
+              name="playlist-edit"
+              size={24}
+              color={accentColor}
+            />
+          </TouchableOpacity>
+        </View>
 
         {/* Last workout card */}
         {lastSession ? (
@@ -178,7 +198,12 @@ const styles = StyleSheet.create({
     fontSize: fontSize.xxl,
     fontWeight: '700',
   },
+  actionRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
   startButton: {
+    flex: 1,
     height: touchTarget.large,
     borderRadius: borderRadius.lg,
     flexDirection: 'row',
@@ -190,6 +215,16 @@ const styles = StyleSheet.create({
     color: colors.textOnPrimary,
     fontSize: fontSize.lg,
     fontWeight: '700',
+  },
+  editButton: {
+    width: touchTarget.large,
+    height: touchTarget.large,
+    borderRadius: borderRadius.lg,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   emptyCard: {
     backgroundColor: colors.card,

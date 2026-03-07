@@ -17,6 +17,7 @@ import {
   WorkoutSummaryScreen,
   HistoryScreen,
   WorkoutDetailScreen,
+  ExerciseEditorScreen,
 } from '../screens';
 
 // ---- Placeholder screens (will be replaced with real ones) ----
@@ -55,9 +56,6 @@ function AnalyticsScreen() {
 }
 function SettingsScreen() {
   return <PlaceholderScreen name="Настройки" />;
-}
-function ExerciseEditorScreen() {
-  return <PlaceholderScreen name="Редактор упражнений" />;
 }
 
 // ---- Navigators ----
@@ -179,6 +177,9 @@ export default function AppNavigator() {
       <Stack.Screen
         name="ExerciseEditor"
         component={ExerciseEditorScreen}
+        options={{
+          animation: 'slide_from_right',
+        }}
       />
     </Stack.Navigator>
   );

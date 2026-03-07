@@ -41,6 +41,18 @@ export async function getExercisesByDayType(
   return rows.map(mapRow);
 }
 
+// Получить все упражнения для типа дня (включая неактивные)
+export async function getAllExercisesByDayType(
+  dayTypeId: DayTypeId
+): Promise<Exercise[]> {
+  const db = await getDatabase();
+  const rows = await db.getAllAsync(
+    'SELECT * FROM exercises WHERE day_type_id = ? ORDER BY is_active DESC, sort_order',
+    [dayTypeId]
+  );
+  return rows.map(mapRow);
+}
+
 // Получить упражнение по id
 export async function getExerciseById(id: string): Promise<Exercise | null> {
   const db = await getDatabase();
@@ -50,6 +62,16 @@ export async function getExerciseById(id: string): Promise<Exercise | null> {
   );
   if (!row) return null;
   return mapRow(row);
+}
+
+// Получить максимальный sortOrder для типа дня
+export async function getMaxSortOrder(dayTypeId: DayTypeId): Promise<number> {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<{ max_order: number | null }>(
+    'SELECT MAX(sort_order) as max_order FROM exercises WHERE day_type_id = ? AND is_active = 1',
+    [dayTypeId]
+  );
+  return row?.max_order ?? 0;
 }
 
 // Создать новое упражнение
@@ -139,7 +161,25 @@ export async function updateExercise(
   );
 }
 
+// Пакетное обновление порядка упражнений
+export async function updateSortOrders(
+  updates: Array<{ id: string; sortOrder: number }>
+): Promise<void> {
+  const db = await getDatabase();
+  for (const { id, sortOrder } of updates) {
+    await db.runAsync(
+      'UPDATE exercises SET sort_order = ? WHERE id = ?',
+      [sortOrder, id]
+    );
+  }
+}
+
 // Мягкое удаление (деактивация)
 export async function deactivateExercise(id: string): Promise<void> {
   await updateExercise(id, { isActive: false });
+}
+
+// Восстановление упражнения
+export async function reactivateExercise(id: string): Promise<void> {
+  await updateExercise(id, { isActive: true });
 }
