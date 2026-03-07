@@ -25,6 +25,7 @@ import {
 } from '../theme';
 import { seedFakeData, clearAllWorkoutData } from '../db';
 import { useAppStore } from '../stores/appStore';
+import { exportAsJSON, exportAsCSV } from '../utils';
 import type { RootStackParamList } from '../navigation/types';
 
 type SettingsNavProp = NativeStackNavigationProp<RootStackParamList>;
@@ -168,6 +169,9 @@ export default function SettingsScreen() {
 
   const [isSeedingData, setIsSeedingData] = useState(false);
   const [isClearingData, setIsClearingData] = useState(false);
+  const [isExportingJSON, setIsExportingJSON] = useState(false);
+  const [isExportingCSV, setIsExportingCSV] = useState(false);
+
 
   // ---- Handlers ----
 
@@ -233,6 +237,31 @@ export default function SettingsScreen() {
     );
   };
 
+  const handleExportJSON = async () => {
+    setIsExportingJSON(true);
+    try {
+      await exportAsJSON();
+    } catch (error) {
+      console.error('Export JSON error:', error);
+      Alert.alert('Ошибка', 'Не удалось экспортировать данные в JSON.');
+    } finally {
+      setIsExportingJSON(false);
+    }
+  };
+
+  const handleExportCSV = async () => {
+    setIsExportingCSV(true);
+    try {
+      await exportAsCSV();
+    } catch (error) {
+      console.error('Export CSV error:', error);
+      Alert.alert('Ошибка', 'Не удалось экспортировать данные в CSV.');
+    } finally {
+      setIsExportingCSV(false);
+    }
+  };
+
+
   // ---- Render ----
 
   return (
@@ -268,6 +297,28 @@ export default function SettingsScreen() {
             onPress={() => handleEditExercises(3)}
           />
         </Section>
+
+        {/* Data export */}
+        <Section title="Данные">
+          <MenuItem
+            icon="code-json"
+            label="Экспорт JSON"
+            sublabel="Полный бэкап всех данных"
+            color={colors.success}
+            onPress={handleExportJSON}
+            loading={isExportingJSON}
+          />
+          <Separator />
+          <MenuItem
+            icon="file-delimited"
+            label="Экспорт CSV"
+            sublabel="3 файла по типам дней (для Excel)"
+            color={colors.success}
+            onPress={handleExportCSV}
+            loading={isExportingCSV}
+          />
+        </Section>
+
 
         {/* Dev tools */}
         <Section title="Разработка">

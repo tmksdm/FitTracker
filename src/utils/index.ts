@@ -34,3 +34,5 @@ export {
   getTimedExerciseConfig,
 } from './sets';
 export type { PlannedSet, TimedExerciseConfig } from './sets';
+
+export { exportAsJSON, exportAsCSV } from './exportData';
