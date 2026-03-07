@@ -12,3 +12,4 @@ export { default as ExerciseList } from './ExerciseList';
 export { default as WorkoutHeader } from './WorkoutHeader';
 export { default as FinishWorkoutModal } from './FinishWorkoutModal';
 export { default as ExerciseEditModal } from './ExerciseEditModal';
+export { default as CardioCard } from './CardioCard';

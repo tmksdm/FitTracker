@@ -16,7 +16,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useWorkoutStore } from '../stores/workoutStore';
 import { useAppStore } from '../stores/appStore';
-import { WorkoutHeader, ExerciseList, ExerciseCard, RestTimer, FinishWorkoutModal } from '../components';
+import { WorkoutHeader, ExerciseList, ExerciseCard, RestTimer, FinishWorkoutModal, CardioCard } from '../components';
 import { colors, spacing } from '../theme';
 import type { RootStackParamList } from '../navigation/types';
 
@@ -39,6 +39,13 @@ export default function ActiveWorkoutScreen() {
   const finishWorkout = useWorkoutStore((s) => s.finishWorkout);
   const cancelWorkout = useWorkoutStore((s) => s.cancelWorkout);
   const startRestTimer = useWorkoutStore((s) => s.startRestTimer);
+  const cardioType = useWorkoutStore((s) => s.cardioType);
+  const jumpRopeCount = useWorkoutStore((s) => s.jumpRopeCount);
+  const treadmillSeconds = useWorkoutStore((s) => s.treadmillSeconds);
+  const isCardioCompleted = useWorkoutStore((s) => s.isCardioCompleted);
+  const saveJumpRope = useWorkoutStore((s) => s.saveJumpRope);
+  const saveTreadmill = useWorkoutStore((s) => s.saveTreadmill);
+  const clearCardio = useWorkoutStore((s) => s.clearCardio);  
 
   // App store
   const dayTypes = useAppStore((s) => s.dayTypes);
@@ -59,10 +66,13 @@ export default function ActiveWorkoutScreen() {
   const exercisesDone = exercises.filter(
     (e) => e.status === 'completed'
   ).length;
+  const exercisesTotal = exercises.length;
+  // Total including cardio for header display
+  const totalWithCardio = exercisesTotal + 1;
+  const doneWithCardio = exercisesDone + (isCardioCompleted ? 1 : 0);
   const exercisesSkipped = exercises.filter(
     (e) => e.status === 'skipped'
   ).length;
-  const exercisesTotal = exercises.length;
 
   // Handle set completion (starts rest timer automatically)
   const handleCompleteSet = useCallback(
@@ -123,14 +133,17 @@ export default function ActiveWorkoutScreen() {
   // Navigate to exercise by index
   const handleSelectExercise = useCallback(
     (index: number) => {
-      setCurrentExercise(index);
+      // Only update exercise index for actual exercises
+      if (index < exercises.length) {
+        setCurrentExercise(index);
+      }
       flatListRef.current?.scrollToIndex({
         index,
         animated: true,
         viewPosition: 0.5,
       });
     },
-    [setCurrentExercise]
+    [setCurrentExercise, exercises.length]
   );
 
   // Finish workout flow
@@ -153,11 +166,14 @@ export default function ActiveWorkoutScreen() {
     setShowFinishModal(false);
   };
 
-  // FlatList viewability tracking
   const onViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
       if (viewableItems.length > 0 && viewableItems[0].index !== null) {
-        setCurrentExercise(viewableItems[0].index);
+        const idx = viewableItems[0].index;
+        // Don't update exercise index when viewing cardio
+        if (idx < (useWorkoutStore.getState().exercises.length)) {
+          setCurrentExercise(idx);
+        }
       }
     }
   ).current;
@@ -167,13 +183,29 @@ export default function ActiveWorkoutScreen() {
   }).current;
 
   // Render a single exercise card
-  const renderExercise = useCallback(
-    ({ item, index }: { item: (typeof exercises)[number]; index: number }) => {
+  const renderListItem = useCallback(
+    ({ item }: { item: ListItem }) => {
+      if (item.type === 'cardio') {
+        return (
+          <View style={{ width: SCREEN_WIDTH - spacing.lg * 2 }}>
+            <CardioCard
+              dayTypeId={session.dayTypeId}
+              jumpRopeCount={jumpRopeCount}
+              treadmillSeconds={treadmillSeconds}
+              isCompleted={isCardioCompleted}
+              onSaveJumpRope={saveJumpRope}
+              onSaveTreadmill={saveTreadmill}
+              onClear={clearCardio}
+            />
+          </View>
+        );
+      }
+
       return (
         <View style={{ width: SCREEN_WIDTH - spacing.lg * 2 }}>
           <ExerciseCard
-            activeExercise={item}
-            exerciseIndex={index}
+            activeExercise={item.data}
+            exerciseIndex={item.index}
             dayTypeId={session.dayTypeId}
             onCompleteSet={handleCompleteSet}
             onUpdateSetReps={handleUpdateSetReps}
@@ -183,7 +215,34 @@ export default function ActiveWorkoutScreen() {
         </View>
       );
     },
-    [session.dayTypeId, handleCompleteSet, handleUpdateSetReps, handleSkipExercise, handleUnskipExercise]
+    [
+      session.dayTypeId,
+      handleCompleteSet,
+      handleUpdateSetReps,
+      handleSkipExercise,
+      handleUnskipExercise,
+      jumpRopeCount,
+      treadmillSeconds,
+      isCardioCompleted,
+      saveJumpRope,
+      saveTreadmill,
+      clearCardio,
+    ]
+  );
+
+  const listKeyExtractor = useCallback(
+    (item: ListItem) =>
+      item.type === 'cardio' ? 'cardio' : item.data.exercise.id,
+    []
+  );
+
+  const listGetItemLayout = useCallback(
+    (_: any, index: number) => ({
+      length: SCREEN_WIDTH - spacing.lg * 2,
+      offset: (SCREEN_WIDTH - spacing.lg * 2 + spacing.md) * index,
+      index,
+    }),
+    []
   );
 
   const keyExtractor = useCallback(
@@ -200,6 +259,16 @@ export default function ActiveWorkoutScreen() {
     []
   );
 
+  // Build combined list: exercises + cardio
+  type ListItem =
+    | { type: 'exercise'; data: (typeof exercises)[number]; index: number }
+    | { type: 'cardio' };
+
+  const listData: ListItem[] = [
+    ...exercises.map((e, i) => ({ type: 'exercise' as const, data: e, index: i })),
+    { type: 'cardio' as const },
+  ];
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       {/* Header */}
@@ -207,7 +276,7 @@ export default function ActiveWorkoutScreen() {
         session={session}
         dayType={dayType}
         exercisesDone={exercisesDone}
-        exercisesTotal={exercisesTotal}
+        exercisesTotal={totalWithCardio}
         onFinish={handleFinishPress}
       />
 
@@ -216,6 +285,8 @@ export default function ActiveWorkoutScreen() {
         <ExerciseList
           exercises={exercises}
           currentIndex={currentExerciseIndex}
+          isCardioCompleted={isCardioCompleted}
+          totalItemCount={exercises.length + 1}
           onSelect={handleSelectExercise}
         />
       </View>
@@ -223,9 +294,9 @@ export default function ActiveWorkoutScreen() {
       {/* Main scrollable exercise content */}
       <FlatList
         ref={flatListRef}
-        data={exercises}
-        renderItem={renderExercise}
-        keyExtractor={keyExtractor}
+        data={listData}
+        renderItem={renderListItem}
+        keyExtractor={listKeyExtractor}
         horizontal
         pagingEnabled
         snapToInterval={SCREEN_WIDTH - spacing.lg * 2 + spacing.md}
@@ -236,7 +307,7 @@ export default function ActiveWorkoutScreen() {
         ItemSeparatorComponent={() => <View style={{ width: spacing.md }} />}
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
-        getItemLayout={getItemLayout}
+        getItemLayout={listGetItemLayout}
         initialScrollIndex={currentExerciseIndex}
         onScrollToIndexFailed={(info) => {
           setTimeout(() => {

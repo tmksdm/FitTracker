@@ -12,6 +12,7 @@ import {
   ExerciseWithStatus,
   WorkoutSession,
   CardioLog,
+  CardioType,
 } from '../types';
 import {
   dayTypeRepo,
@@ -69,6 +70,12 @@ export interface WorkoutState {
   stopwatchSeconds: number;
   isStopwatchRunning: boolean;
 
+  // --- Cardio ---
+  cardioType: CardioType | null;
+  jumpRopeCount: number | null;
+  treadmillSeconds: number | null;
+  isCardioCompleted: boolean;
+
   // --- Actions ---
   startWorkout: (
     dayTypeId: DayTypeId,
@@ -88,6 +95,11 @@ export interface WorkoutState {
   updateSetReps: (exerciseIndex: number, setIndex: number, reps: number) => void;
   skipExercise: (exerciseIndex: number) => void;
   unskipExercise: (exerciseIndex: number) => void;
+
+  // Cardio actions
+  saveJumpRope: (count: number) => void;
+  saveTreadmill: (seconds: number) => void;
+  clearCardio: () => void;
 
   // Timer
   setRestTimerDefault: (seconds: number) => void;
@@ -128,6 +140,10 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   isRestTimerRunning: false,
   stopwatchSeconds: 0,
   isStopwatchRunning: false,
+  cardioType: null,
+  jumpRopeCount: null,
+  treadmillSeconds: null,
+  isCardioCompleted: false,
 
   // =======================================
   // START WORKOUT
@@ -231,6 +247,10 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
         });
       }
 
+      // 6. Determine cardio type for this day
+      const cardioType: CardioType =
+        dayTypeId === 1 ? 'jump_rope' : 'treadmill_3km';
+
       // Direction is now global — no need to toggle per day type.
       // The direction is saved in the workout_sessions record,
       // and the next session's direction is computed from it.
@@ -240,6 +260,10 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
         isActive: true,
         exercises: activeExercises,
         currentExerciseIndex: 0,
+        cardioType,
+        jumpRopeCount: null,
+        treadmillSeconds: null,
+        isCardioCompleted: false,
       });
     } catch (error) {
       console.error('Failed to start workout:', error);
@@ -323,6 +347,22 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       // 3. Finish the session in DB
       await workoutRepo.finishWorkoutSession(state.session.id, weightAfter);
 
+      // 3b. Save cardio log if recorded
+      if (state.isCardioCompleted && state.cardioType) {
+        await workoutRepo.createCardioLog({
+          workoutSessionId: state.session.id,
+          type: state.cardioType,
+          durationSeconds:
+            state.cardioType === 'treadmill_3km'
+              ? state.treadmillSeconds
+              : null,
+          count:
+            state.cardioType === 'jump_rope'
+              ? state.jumpRopeCount
+              : null,
+        });
+      }
+
       // 4. Re-fetch the session
       const finishedSession = await workoutRepo.getWorkoutSessionById(
         state.session.id
@@ -338,6 +378,10 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
         restTimerSeconds: 0,
         isStopwatchRunning: false,
         stopwatchSeconds: 0,
+        cardioType: null,
+        jumpRopeCount: null,
+        treadmillSeconds: null,
+        isCardioCompleted: false,
       });
 
       return finishedSession;
@@ -360,6 +404,10 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       restTimerSeconds: 0,
       isStopwatchRunning: false,
       stopwatchSeconds: 0,
+      cardioType: null,
+      jumpRopeCount: null,
+      treadmillSeconds: null,
+      isCardioCompleted: false,
     });
   },
 
@@ -455,6 +503,31 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       exercise.status = getExerciseStatus(exercise.sets, exercise.exercise.isTimed);
       exercises[exerciseIndex] = exercise;
       return { exercises };
+    });
+  },
+
+  // =======================================
+  // CARDIO
+  // =======================================
+  saveJumpRope: (count: number) => {
+    set({
+      jumpRopeCount: count,
+      isCardioCompleted: true,
+    });
+  },
+
+  saveTreadmill: (seconds: number) => {
+    set({
+      treadmillSeconds: seconds,
+      isCardioCompleted: true,
+    });
+  },
+
+  clearCardio: () => {
+    set({
+      jumpRopeCount: null,
+      treadmillSeconds: null,
+      isCardioCompleted: false,
     });
   },
 

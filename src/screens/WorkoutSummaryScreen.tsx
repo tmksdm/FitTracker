@@ -19,7 +19,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, spacing, fontSize, borderRadius, touchTarget, getDayTypeColor } from '../theme';
 import { useAppStore } from '../stores/appStore';
 import { workoutRepo } from '../db';
-import type { WorkoutSession, DayType } from '../types';
+import type { WorkoutSession, DayType, CardioLog } from '../types';
 import type { ExerciseSummary } from '../db/repositories/workoutRepository';
 import type { RootStackParamList } from '../navigation/types';
 
@@ -81,6 +81,13 @@ function calcAvgWeight(before: number | null, after: number | null): string {
   if (before !== null) return formatWeight(before);
   if (after !== null) return formatWeight(after);
   return '—';
+}
+
+/** Format seconds as "MM:SS" */
+function formatSecondsAsDuration(totalSeconds: number): string {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
 // ---- Sub-components ----
@@ -180,6 +187,32 @@ function ExerciseSummaryRow({ summary }: ExerciseSummaryRowProps) {
   );
 }
 
+function CardioSummaryRow({ cardio }: { cardio: CardioLog }) {
+  const isJumpRope = cardio.type === 'jump_rope';
+
+  return (
+    <View style={exerciseRowStyles.container}>
+      <View style={exerciseRowStyles.nameRow}>
+        <MaterialCommunityIcons
+          name={isJumpRope ? 'jump-rope' : 'run'}
+          size={18}
+          color={colors.info}
+        />
+        <Text style={exerciseRowStyles.name}>
+          {isJumpRope ? 'Скакалка' : 'Бег 3 км'}
+        </Text>
+      </View>
+      <View style={exerciseRowStyles.detailsRow}>
+        <Text style={exerciseRowStyles.reps}>
+          {isJumpRope
+            ? `${cardio.count ?? 0} прыжков`
+            : formatSecondsAsDuration(cardio.durationSeconds ?? 0)}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 const exerciseRowStyles = StyleSheet.create({
   container: {
     backgroundColor: colors.surface,
@@ -237,6 +270,7 @@ export default function WorkoutSummaryScreen() {
 
   const [session, setSession] = useState<WorkoutSession | null>(null);
   const [exerciseSummaries, setExerciseSummaries] = useState<ExerciseSummary[]>([]);
+  const [cardioLogs, setCardioLogs] = useState<CardioLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -246,12 +280,14 @@ export default function WorkoutSummaryScreen() {
   async function loadData() {
     setIsLoading(true);
     try {
-      const [sess, summaries] = await Promise.all([
+      const [sess, summaries, cardio] = await Promise.all([
         workoutRepo.getWorkoutSessionById(sessionId),
         workoutRepo.getSessionExerciseSummary(sessionId),
+        workoutRepo.getCardioBySession(sessionId),
       ]);
       setSession(sess);
       setExerciseSummaries(summaries);
+      setCardioLogs(cardio);
     } catch (error) {
       console.error('Failed to load workout summary:', error);
     } finally {
@@ -420,6 +456,9 @@ export default function WorkoutSummaryScreen() {
           <View style={styles.exerciseList}>
             {exerciseSummaries.map((summary) => (
               <ExerciseSummaryRow key={summary.exerciseId} summary={summary} />
+            ))}
+            {cardioLogs.map((cardio) => (
+              <CardioSummaryRow key={cardio.id} cardio={cardio} />
             ))}
           </View>
         </View>
