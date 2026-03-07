@@ -1,5 +1,6 @@
 // ==========================================
 // Экран «Редактор упражнений»
+// Pick-and-place reordering + arrow buttons
 // ==========================================
 
 import React, { useState, useCallback } from 'react';
@@ -10,6 +11,7 @@ import {
   FlatList,
   StyleSheet,
   Alert,
+  ListRenderItemInfo,
 } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -39,6 +41,32 @@ function formatWeight(w: number | null): string {
   return String(w).replace('.', ',') + ' кг';
 }
 
+// ── Drop slot between items ───────────────────────────────
+function DropSlot({
+  onDrop,
+  accentColor,
+}: {
+  onDrop: () => void;
+  accentColor: string;
+}) {
+  return (
+    <TouchableOpacity
+      style={styles.dropSlot}
+      onPress={onDrop}
+      activeOpacity={0.7}
+    >
+      <View style={styles.dropSlotLineContainer}>
+        <View style={[styles.dropSlotLine, { backgroundColor: accentColor }]} />
+        <View style={[styles.dropSlotCircle, { backgroundColor: accentColor }]}>
+          <MaterialCommunityIcons name="arrow-right" size={14} color={colors.text} />
+        </View>
+        <View style={[styles.dropSlotLine, { backgroundColor: accentColor }]} />
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+// ── Main screen ───────────────────────────────────────────
 export default function ExerciseEditorScreen() {
   const route = useRoute<EditorRouteProp>();
   const navigation = useNavigation<EditorNavProp>();
@@ -54,6 +82,9 @@ export default function ExerciseEditorScreen() {
   // Modal state
   const [modalVisible, setModalVisible] = useState(false);
   const [editingExercise, setEditingExercise] = useState<Exercise | null>(null);
+
+  // Pick-and-place state: index of the picked exercise (null = nothing picked)
+  const [pickedIndex, setPickedIndex] = useState<number | null>(null);
 
   // Load exercises
   const loadExercises = useCallback(async () => {
@@ -73,57 +104,56 @@ export default function ExerciseEditorScreen() {
     }, [loadExercises])
   );
 
-  // --- Actions ---
+  // --- Reorder helpers ---
 
-  const handleMoveUp = async (index: number) => {
-    if (index === 0) return;
-    const newList = [...exercises];
-    const temp = newList[index];
-    newList[index] = newList[index - 1];
-    newList[index - 1] = temp;
-
-    // Update sort orders
-    const updates = newList.map((ex, i) => ({
-      id: ex.id,
-      sortOrder: i + 1,
-    }));
-
-    // Optimistic update
+  const applyReorder = async (newList: Exercise[]) => {
+    const updates = newList.map((ex, i) => ({ id: ex.id, sortOrder: i + 1 }));
     const updatedList = newList.map((ex, i) => ({ ...ex, sortOrder: i + 1 }));
     setExercises(updatedList);
-
     await exerciseRepo.updateSortOrders(updates);
   };
 
-  const handleMoveDown = async (index: number) => {
-    if (index === exercises.length - 1) return;
-    const newList = [...exercises];
-    const temp = newList[index];
-    newList[index] = newList[index + 1];
-    newList[index + 1] = temp;
+  // --- Pick-and-place actions ---
 
-    const updates = newList.map((ex, i) => ({
-      id: ex.id,
-      sortOrder: i + 1,
-    }));
-
-    const updatedList = newList.map((ex, i) => ({ ...ex, sortOrder: i + 1 }));
-    setExercises(updatedList);
-
-    await exerciseRepo.updateSortOrders(updates);
+  const handlePickToggle = (index: number) => {
+    // Tap same item again → cancel
+    if (pickedIndex === index) {
+      setPickedIndex(null);
+    } else {
+      setPickedIndex(index);
+    }
   };
+
+  const handleDropAt = async (targetSlotIndex: number) => {
+    if (pickedIndex === null) return;
+
+    const newList = [...exercises];
+    const [moved] = newList.splice(pickedIndex, 1);
+
+    // After removing, the target index shifts if it was after the picked item
+    const insertAt = targetSlotIndex > pickedIndex ? targetSlotIndex - 1 : targetSlotIndex;
+    newList.splice(insertAt, 0, moved);
+
+    setPickedIndex(null);
+    await applyReorder(newList);
+  };
+
+  // --- CRUD actions ---
 
   const handleEdit = (exercise: Exercise) => {
+    if (pickedIndex !== null) return; // Ignore taps while placing
     setEditingExercise(exercise);
     setModalVisible(true);
   };
 
   const handleAdd = () => {
+    setPickedIndex(null);
     setEditingExercise(null);
     setModalVisible(true);
   };
 
   const handleDelete = (exercise: Exercise) => {
+    setPickedIndex(null);
     Alert.alert(
       'Удалить упражнение?',
       `«${exercise.name}» будет скрыто из списка. Историю можно будет посмотреть.`,
@@ -143,10 +173,8 @@ export default function ExerciseEditorScreen() {
 
   const handleSave = async (data: Partial<Exercise> & { name: string }) => {
     if (editingExercise) {
-      // Update existing
       await exerciseRepo.updateExercise(editingExercise.id, data);
     } else {
-      // Create new — put at the end
       const maxOrder = await exerciseRepo.getMaxSortOrder(dayTypeId);
       await exerciseRepo.createExercise({
         dayTypeId,
@@ -168,7 +196,6 @@ export default function ExerciseEditorScreen() {
         isActive: true,
       });
     }
-
     setModalVisible(false);
     setEditingExercise(null);
     await loadExercises();
@@ -179,122 +206,205 @@ export default function ExerciseEditorScreen() {
     setEditingExercise(null);
   };
 
+  // --- Build list data with drop slots ---
+
+  // When an item is picked, we insert drop-slot markers between items.
+  // Each element is either { type: 'exercise', ... } or { type: 'slot', ... }.
+
+  type ListItem =
+    | { type: 'exercise'; exercise: Exercise; index: number }
+    | { type: 'slot'; targetIndex: number };
+
+  const buildListData = (): ListItem[] => {
+    if (pickedIndex === null) {
+      // Normal mode — plain exercise list
+      return exercises.map((ex, i) => ({ type: 'exercise' as const, exercise: ex, index: i }));
+    }
+
+    // Pick-and-place mode — interleave drop slots
+    const items: ListItem[] = [];
+
+    // Slot before the first item (only if picked item is not first)
+    if (pickedIndex !== 0) {
+      items.push({ type: 'slot', targetIndex: 0 });
+    }
+
+    for (let i = 0; i < exercises.length; i++) {
+      items.push({ type: 'exercise', exercise: exercises[i], index: i });
+
+      // Slot after this item — but not directly before or after the picked item
+      // (dropping there would be a no-op)
+      const isPickedOrAdjacentBelow = i === pickedIndex || i === pickedIndex - 1;
+      const isLastItem = i === exercises.length - 1;
+
+      if (!isPickedOrAdjacentBelow && !isLastItem) {
+        items.push({ type: 'slot', targetIndex: i + 1 });
+      }
+      // Slot at the very end (only if picked item is not last)
+      if (isLastItem && pickedIndex !== exercises.length - 1) {
+        items.push({ type: 'slot', targetIndex: exercises.length });
+      }
+    }
+
+    return items;
+  };
+
   // --- Render ---
 
-  const renderExerciseItem = ({
-    item,
-    index,
-  }: {
-    item: Exercise;
-    index: number;
-  }) => {
+  const renderItem = ({ item }: ListRenderItemInfo<ListItem>) => {
+    if (item.type === 'slot') {
+      return <DropSlot onDrop={() => handleDropAt(item.targetIndex)} accentColor={accentColor} />;
+    }
+
+    const { exercise, index } = item;
+    const isPicked = pickedIndex === index;
+    const isPickMode = pickedIndex !== null;
     const isFirst = index === 0;
     const isLast = index === exercises.length - 1;
 
     return (
-      <View style={styles.exerciseRow}>
-        {/* Order controls */}
-        <View style={styles.orderControls}>
-          <TouchableOpacity
-            onPress={() => handleMoveUp(index)}
-            disabled={isFirst}
-            style={[styles.arrowButton, isFirst && styles.arrowButtonDisabled]}
-            hitSlop={8}
-          >
-            <MaterialCommunityIcons
-              name="chevron-up"
-              size={22}
-              color={isFirst ? colors.textMuted : colors.textSecondary}
-            />
-          </TouchableOpacity>
-
-          <Text style={styles.orderNumber}>{index + 1}</Text>
-
-          <TouchableOpacity
-            onPress={() => handleMoveDown(index)}
-            disabled={isLast}
-            style={[styles.arrowButton, isLast && styles.arrowButtonDisabled]}
-            hitSlop={8}
-          >
-            <MaterialCommunityIcons
-              name="chevron-down"
-              size={22}
-              color={isLast ? colors.textMuted : colors.textSecondary}
-            />
-          </TouchableOpacity>
-        </View>
+      <View
+        style={[
+          styles.exerciseRow,
+          isPicked && styles.exerciseRowPicked,
+          isPicked && { borderColor: accentColor },
+          isPickMode && !isPicked && styles.exerciseRowDimmed,
+        ]}
+      >
+        {/* Pick handle + order number */}
+        <TouchableOpacity
+          style={styles.dragHandle}
+          onPress={() => handlePickToggle(index)}
+          activeOpacity={0.6}
+          hitSlop={4}
+        >
+          <MaterialCommunityIcons
+            name={isPicked ? 'close-circle' : 'drag'}
+            size={22}
+            color={isPicked ? accentColor : colors.textMuted}
+          />
+          <Text style={[styles.orderNumber, isPicked && { color: accentColor }]}>
+            {index + 1}
+          </Text>
+        </TouchableOpacity>
 
         {/* Exercise info — tap to edit */}
         <TouchableOpacity
           style={styles.exerciseInfo}
-          onPress={() => handleEdit(item)}
+          onPress={() => handleEdit(exercise)}
           activeOpacity={0.7}
+          disabled={isPickMode}
         >
           <View style={styles.exerciseNameRow}>
             <MaterialCommunityIcons
-              name={item.hasAddedWeight ? 'weight-kilogram' : 'arm-flex'}
+              name={exercise.hasAddedWeight ? 'weight-kilogram' : 'arm-flex'}
               size={18}
-              color={accentColor}
+              color={isPicked ? accentColor : isPickMode ? colors.textMuted : accentColor}
             />
-            <Text style={styles.exerciseName} numberOfLines={1}>
-              {item.name}
+            <Text
+              style={[
+                styles.exerciseName,
+                isPickMode && !isPicked && styles.textDimmed,
+              ]}
+              numberOfLines={1}
+            >
+              {exercise.name}
             </Text>
           </View>
 
           <View style={styles.exerciseDetails}>
-            {item.hasAddedWeight ? (
-              <Text style={styles.detailText}>
-                {formatWeight(item.workingWeight)} · шаг {formatWeight(item.weightIncrement)}
+            {exercise.hasAddedWeight ? (
+              <Text
+                style={[
+                  styles.detailText,
+                  isPickMode && !isPicked && styles.textDimmed,
+                ]}
+              >
+                {formatWeight(exercise.workingWeight)} · шаг{' '}
+                {formatWeight(exercise.weightIncrement)}
               </Text>
             ) : (
-              <Text style={styles.detailText}>Без отягощения</Text>
+              <Text
+                style={[
+                  styles.detailText,
+                  isPickMode && !isPicked && styles.textDimmed,
+                ]}
+              >
+                Без отягощения
+              </Text>
             )}
-            <Text style={styles.detailTextSmall}>
-              {item.numWorkingSets} подх. · {item.minRepsPerSet}–{item.maxRepsPerSet} повт.
+            <Text
+              style={[
+                styles.detailTextSmall,
+                isPickMode && !isPicked && styles.textDimmed,
+              ]}
+            >
+              {exercise.numWorkingSets} подх. · {exercise.minRepsPerSet}–
+              {exercise.maxRepsPerSet} повт.
             </Text>
           </View>
         </TouchableOpacity>
 
-        {/* Delete button */}
-        <TouchableOpacity
-          style={styles.deleteButton}
-          onPress={() => handleDelete(item)}
-          hitSlop={8}
-        >
-          <MaterialCommunityIcons
-            name="trash-can-outline"
-            size={20}
-            color={colors.error}
-          />
-        </TouchableOpacity>
+        {/* Delete button — hidden in pick mode */}
+        {!isPickMode && (
+          <TouchableOpacity
+            style={styles.deleteButton}
+            onPress={() => handleDelete(exercise)}
+            hitSlop={8}
+          >
+            <MaterialCommunityIcons
+              name="trash-can-outline"
+              size={20}
+              color={colors.error}
+            />
+          </TouchableOpacity>
+        )}
       </View>
     );
   };
+
+  const listData = buildListData();
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => navigation.goBack()}
+          onPress={() => {
+            if (pickedIndex !== null) {
+              setPickedIndex(null);
+              return;
+            }
+            navigation.goBack();
+          }}
           style={styles.backButton}
           hitSlop={12}
         >
           <MaterialCommunityIcons
-            name="arrow-left"
+            name={pickedIndex !== null ? 'close' : 'arrow-left'}
             size={24}
             color={colors.text}
           />
         </TouchableOpacity>
 
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Упражнения</Text>
-          <Text style={[styles.headerSubtitle, { color: accentColor }]}>
-            {dayType?.nameRu ?? ''}
-          </Text>
+          {pickedIndex !== null ? (
+            <>
+              <Text style={styles.headerTitle}>Перемещение</Text>
+              <Text style={[styles.headerSubtitle, { color: accentColor }]}>
+                Выберите новое место
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.headerTitle}>Упражнения</Text>
+              <Text style={[styles.headerSubtitle, { color: accentColor }]}>
+                {dayType?.nameRu ?? ''}
+              </Text>
+            </>
+          )}
         </View>
 
-        {/* Spacer to keep title centered */}
         <View style={styles.headerSpacer} />
       </View>
 
@@ -306,7 +416,9 @@ export default function ExerciseEditorScreen() {
           color={colors.textMuted}
         />
         <Text style={styles.hintText}>
-          Нажмите на упражнение для редактирования. Стрелками меняйте порядок.
+          {pickedIndex !== null
+            ? 'Нажмите на полоску между упражнениями — туда переместится выбранное.'
+            : 'Нажмите на точки слева для перемещения или на название для редактирования.'}
         </Text>
       </View>
 
@@ -329,27 +441,32 @@ export default function ExerciseEditorScreen() {
         </View>
       ) : (
         <FlatList
-          data={exercises}
-          renderItem={renderExerciseItem}
-          keyExtractor={(item) => item.id}
+          data={listData}
+          renderItem={renderItem}
+          keyExtractor={(item) =>
+            item.type === 'exercise' ? item.exercise.id : `slot-${item.targetIndex}`
+          }
           contentContainerStyle={styles.listContent}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
+          extraData={pickedIndex}
         />
       )}
 
-      {/* Add button */}
-      <TouchableOpacity
-        style={[styles.addButton, { backgroundColor: accentColor }]}
-        onPress={handleAdd}
-        activeOpacity={0.8}
-      >
-        <MaterialCommunityIcons
-          name="plus"
-          size={24}
-          color={colors.textOnPrimary}
-        />
-        <Text style={styles.addButtonText}>Добавить упражнение</Text>
-      </TouchableOpacity>
+      {/* Add button — hidden in pick mode */}
+      {pickedIndex === null && (
+        <TouchableOpacity
+          style={[styles.addButton, { backgroundColor: accentColor }]}
+          onPress={handleAdd}
+          activeOpacity={0.8}
+        >
+          <MaterialCommunityIcons
+            name="plus"
+            size={24}
+            color={colors.textOnPrimary}
+          />
+          <Text style={styles.addButtonText}>Добавить упражнение</Text>
+        </TouchableOpacity>
+      )}
 
       {/* Edit/Add modal */}
       <ExerciseEditModal
@@ -363,6 +480,7 @@ export default function ExerciseEditorScreen() {
   );
 }
 
+// ── Styles ────────────────────────────────────────────────
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -414,29 +532,43 @@ const styles = StyleSheet.create({
   listContent: {
     padding: spacing.md,
   },
+
+  // ── Exercise row ──
   exerciseRow: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.card,
     borderRadius: borderRadius.lg,
     padding: spacing.md,
+    paddingLeft: spacing.sm,
     gap: spacing.sm,
+    borderWidth: 2,
+    borderColor: 'transparent',
   },
-  orderControls: {
+  exerciseRowPicked: {
+    backgroundColor: colors.surfaceLight,
+    // borderColor set dynamically via style prop
+  },
+  exerciseRowDimmed: {
+    opacity: 0.5,
+  },
+
+  // ── Drag handle ──
+  dragHandle: {
+    width: 32,
     alignItems: 'center',
-    width: 36,
+    justifyContent: 'center',
+    gap: 2,
   },
-  arrowButton: {
-    padding: 2,
-  },
-  arrowButtonDisabled: {
-    opacity: 0.3,
-  },
+
+  // ── Order controls (arrows) ──
   orderNumber: {
     color: colors.textMuted,
     fontSize: fontSize.sm,
     fontWeight: '700',
   },
+
+  // ── Exercise info ──
   exerciseInfo: {
     flex: 1,
     gap: spacing.xs,
@@ -463,12 +595,43 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: fontSize.xs,
   },
+  textDimmed: {
+    color: colors.textMuted,
+  },
+
+  // ── Delete button ──
   deleteButton: {
     width: 40,
     height: 40,
     alignItems: 'center',
     justifyContent: 'center',
   },
+
+  // ── Drop slot ──
+  dropSlot: {
+    height: 40,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+  },
+  dropSlotLineContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  dropSlotLine: {
+    flex: 1,
+    height: 2,
+    borderRadius: 1,
+  },
+  dropSlotCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: spacing.xs,
+  },
+
+  // ── Misc ──
   separator: {
     height: spacing.sm,
   },
