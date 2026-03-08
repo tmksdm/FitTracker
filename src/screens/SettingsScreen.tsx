@@ -10,6 +10,7 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -25,7 +26,8 @@ import {
 } from '../theme';
 import { seedFakeData, clearAllWorkoutData } from '../db';
 import { useAppStore } from '../stores/appStore';
-import { exportAsJSON, exportAsCSV } from '../utils';
+import { exportAsJSON, exportAsCSV, pickAndParseBackup, restoreFromBackup } from '../utils';
+import type { ImportPreview } from '../utils';
 import type { RootStackParamList } from '../navigation/types';
 
 type SettingsNavProp = NativeStackNavigationProp<RootStackParamList>;
@@ -159,6 +161,195 @@ function Separator() {
   );
 }
 
+// ---- Import preview modal ----
+
+function ImportPreviewModal({
+  visible,
+  preview,
+  onConfirm,
+  onCancel,
+  isRestoring,
+}: {
+  visible: boolean;
+  preview: ImportPreview | null;
+  onConfirm: () => void;
+  onCancel: () => void;
+  isRestoring: boolean;
+}) {
+  if (!preview) return null;
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onCancel}
+    >
+      <View style={modalStyles.overlay}>
+        <View style={modalStyles.container}>
+          <Text style={modalStyles.title}>Восстановление из бэкапа</Text>
+          <Text style={modalStyles.subtitle}>
+            Все текущие данные будут заменены данными из файла.
+          </Text>
+
+          <View style={modalStyles.statsBlock}>
+            <View style={modalStyles.statRow}>
+              <Text style={modalStyles.statLabel}>Дата бэкапа</Text>
+              <Text style={modalStyles.statValue}>
+                {formatExportDate(preview.exportedAt)}
+              </Text>
+            </View>
+            <View style={modalStyles.statRow}>
+              <Text style={modalStyles.statLabel}>Тренировок</Text>
+              <Text style={modalStyles.statValue}>{preview.sessionCount}</Text>
+            </View>
+            <View style={modalStyles.statRow}>
+              <Text style={modalStyles.statLabel}>Упражнений</Text>
+              <Text style={modalStyles.statValue}>{preview.exerciseCount}</Text>
+            </View>
+            <View style={modalStyles.statRow}>
+              <Text style={modalStyles.statLabel}>Записей подходов</Text>
+              <Text style={modalStyles.statValue}>{preview.logCount}</Text>
+            </View>
+            <View style={modalStyles.statRow}>
+              <Text style={modalStyles.statLabel}>Записей кардио</Text>
+              <Text style={modalStyles.statValue}>{preview.cardioCount}</Text>
+            </View>
+            <View style={modalStyles.statRow}>
+              <Text style={modalStyles.statLabel}>Период</Text>
+              <Text style={modalStyles.statValue}>{preview.dateRange}</Text>
+            </View>
+          </View>
+
+          <View style={modalStyles.buttonRow}>
+            <TouchableOpacity
+              style={modalStyles.cancelButton}
+              onPress={onCancel}
+              disabled={isRestoring}
+              activeOpacity={0.7}
+            >
+              <Text style={modalStyles.cancelButtonText}>Отмена</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                modalStyles.confirmButton,
+                isRestoring && { opacity: 0.6 },
+              ]}
+              onPress={onConfirm}
+              disabled={isRestoring}
+              activeOpacity={0.7}
+            >
+              {isRestoring ? (
+                <ActivityIndicator size="small" color={colors.textOnPrimary} />
+              ) : (
+                <Text style={modalStyles.confirmButtonText}>Восстановить</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function formatExportDate(iso: string): string {
+  if (iso === 'неизвестно') return iso;
+  try {
+    const d = new Date(iso);
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    return `${day}.${month}.${year} ${hours}:${minutes}`;
+  } catch {
+    return iso;
+  }
+}
+
+const modalStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  container: {
+    backgroundColor: colors.card,
+    borderRadius: borderRadius.xl,
+    padding: spacing.xl,
+    gap: spacing.lg,
+  },
+  title: {
+    color: colors.text,
+    fontSize: fontSize.lg,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  subtitle: {
+    color: colors.warning,
+    fontSize: fontSize.sm,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  statsBlock: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    gap: 0,
+  },
+  statRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  statLabel: {
+    color: colors.textSecondary,
+    fontSize: fontSize.sm,
+  },
+  statValue: {
+    color: colors.text,
+    fontSize: fontSize.sm,
+    fontWeight: '700',
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  cancelButton: {
+    flex: 1,
+    height: touchTarget.comfortable,
+    borderRadius: borderRadius.lg,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  cancelButtonText: {
+    color: colors.textSecondary,
+    fontSize: fontSize.md,
+    fontWeight: '600',
+  },
+  confirmButton: {
+    flex: 1,
+    height: touchTarget.comfortable,
+    borderRadius: borderRadius.lg,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmButtonText: {
+    color: colors.textOnPrimary,
+    fontSize: fontSize.md,
+    fontWeight: '700',
+  },
+});
+
 // ==========================================
 // MAIN COMPONENT
 // ==========================================
@@ -172,6 +363,11 @@ export default function SettingsScreen() {
   const [isExportingJSON, setIsExportingJSON] = useState(false);
   const [isExportingCSV, setIsExportingCSV] = useState(false);
 
+  // Import state
+  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
+  const [isPickingFile, setIsPickingFile] = useState(false);
 
   // ---- Handlers ----
 
@@ -261,6 +457,55 @@ export default function SettingsScreen() {
     }
   };
 
+  const handleImportJSON = async () => {
+    setIsPickingFile(true);
+    try {
+      const preview = await pickAndParseBackup();
+      if (preview) {
+        setImportPreview(preview);
+        setShowImportModal(true);
+      }
+      // null = user cancelled picker, do nothing
+    } catch (error: any) {
+      console.error('Import parse error:', error);
+      Alert.alert(
+        'Ошибка чтения файла',
+        error?.message ?? 'Не удалось прочитать файл.'
+      );
+    } finally {
+      setIsPickingFile(false);
+    }
+  };
+
+  const handleConfirmRestore = async () => {
+    if (!importPreview) return;
+
+    setIsRestoring(true);
+    try {
+      await restoreFromBackup(importPreview.raw);
+      await refreshNextDayInfo();
+      setShowImportModal(false);
+      setImportPreview(null);
+      Alert.alert(
+        'Готово',
+        `Восстановлено ${importPreview.sessionCount} тренировок.`
+      );
+    } catch (error: any) {
+      console.error('Restore error:', error);
+      Alert.alert(
+        'Ошибка восстановления',
+        error?.message ?? 'Не удалось восстановить данные из бэкапа.'
+      );
+    } finally {
+      setIsRestoring(false);
+    }
+  };
+
+  const handleCancelImport = () => {
+    if (isRestoring) return; // don't close while restoring
+    setShowImportModal(false);
+    setImportPreview(null);
+  };
 
   // ---- Render ----
 
@@ -298,7 +543,7 @@ export default function SettingsScreen() {
           />
         </Section>
 
-        {/* Data export */}
+        {/* Data export & import */}
         <Section title="Данные">
           <MenuItem
             icon="code-json"
@@ -317,8 +562,16 @@ export default function SettingsScreen() {
             onPress={handleExportCSV}
             loading={isExportingCSV}
           />
+          <Separator />
+          <MenuItem
+            icon="database-import"
+            label="Импорт JSON"
+            sublabel="Восстановить из бэкапа"
+            color={colors.info}
+            onPress={handleImportJSON}
+            loading={isPickingFile}
+          />
         </Section>
-
 
         {/* Dev tools */}
         <Section title="Разработка">
@@ -341,6 +594,15 @@ export default function SettingsScreen() {
           />
         </Section>
       </View>
+
+      {/* Import preview modal */}
+      <ImportPreviewModal
+        visible={showImportModal}
+        preview={importPreview}
+        onConfirm={handleConfirmRestore}
+        onCancel={handleCancelImport}
+        isRestoring={isRestoring}
+      />
     </SafeAreaView>
   );
 }

@@ -36,3 +36,6 @@ export {
 export type { PlannedSet, TimedExerciseConfig } from './sets';
 
 export { exportAsJSON, exportAsCSV } from './exportData';
+
+export { pickAndParseBackup, restoreFromBackup } from './importData';
+export type { ImportPreview } from './importData';
