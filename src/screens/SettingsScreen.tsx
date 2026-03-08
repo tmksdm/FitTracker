@@ -25,7 +25,6 @@ import {
   touchTarget,
   getDayTypeColor,
 } from '../theme';
-import { seedFakeData, clearAllWorkoutData } from '../db';
 import { useAppStore } from '../stores/appStore';
 import { exportAsJSON, exportAsCSV, pickAndParseBackup, restoreFromBackup } from '../utils';
 import type { ImportPreview } from '../utils';
@@ -359,8 +358,6 @@ export default function SettingsScreen() {
   const navigation = useNavigation<SettingsNavProp>();
   const refreshNextDayInfo = useAppStore((s) => s.refreshNextDayInfo);
 
-  const [isSeedingData, setIsSeedingData] = useState(false);
-  const [isClearingData, setIsClearingData] = useState(false);
   const [isExportingJSON, setIsExportingJSON] = useState(false);
   const [isExportingCSV, setIsExportingCSV] = useState(false);
 
@@ -374,64 +371,6 @@ export default function SettingsScreen() {
 
   const handleEditExercises = (dayTypeId: number) => {
     navigation.navigate('ExerciseEditor', { dayTypeId });
-  };
-
-  const handleSeedFakeData = () => {
-    Alert.alert(
-      'Загрузить тестовые данные?',
-      'Будет создана история тренировок за 4 месяца. ' +
-        'Существующие данные не удаляются — новые добавятся к ним.',
-      [
-        { text: 'Отмена', style: 'cancel' },
-        {
-          text: 'Загрузить',
-          onPress: async () => {
-            setIsSeedingData(true);
-            try {
-              const count = await seedFakeData();
-              await refreshNextDayInfo();
-              Alert.alert(
-                'Готово',
-                `Создано ${count} тренировок с подходами и кардио.`
-              );
-            } catch (error) {
-              console.error('Seed error:', error);
-              Alert.alert('Ошибка', 'Не удалось создать тестовые данные.');
-            } finally {
-              setIsSeedingData(false);
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  const handleClearAllData = () => {
-    Alert.alert(
-      'Удалить все тренировки?',
-      'Все записи тренировок, подходов и кардио будут удалены безвозвратно. ' +
-        'Упражнения и настройки сохранятся.',
-      [
-        { text: 'Отмена', style: 'cancel' },
-        {
-          text: 'Удалить',
-          style: 'destructive',
-          onPress: async () => {
-            setIsClearingData(true);
-            try {
-              await clearAllWorkoutData();
-              await refreshNextDayInfo();
-              Alert.alert('Готово', 'Все тренировки удалены.');
-            } catch (error) {
-              console.error('Clear error:', error);
-              Alert.alert('Ошибка', 'Не удалось удалить данные.');
-            } finally {
-              setIsClearingData(false);
-            }
-          },
-        },
-      ]
-    );
   };
 
   const handleExportJSON = async () => {
@@ -571,27 +510,6 @@ export default function SettingsScreen() {
             color={colors.info}
             onPress={handleImportJSON}
             loading={isPickingFile}
-          />
-        </Section>
-
-        {/* Dev tools */}
-        <Section title="Разработка">
-          <MenuItem
-            icon="database-plus"
-            label="Загрузить тестовые данные"
-            sublabel="Создать историю за 4 месяца"
-            color={colors.info}
-            onPress={handleSeedFakeData}
-            loading={isSeedingData}
-          />
-          <Separator />
-          <MenuItem
-            icon="delete-forever"
-            label="Удалить все тренировки"
-            sublabel="Очистить историю и логи"
-            onPress={handleClearAllData}
-            loading={isClearingData}
-            destructive
           />
         </Section>
       </ScrollView>
