@@ -4,7 +4,7 @@
 // Step 2: Post-workout body weight + summary
 // ==========================================
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -14,10 +14,22 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
+  Dimensions,
+  Animated,
 } from 'react-native';
+import Svg, { Circle } from 'react-native-svg';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { CardioType, DayTypeId } from '../types';
 import { colors, spacing, fontSize, borderRadius, touchTarget } from '../theme';
+
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+
+// ---- Jump Rope Timer Constants ----
+const JUMP_TIMER_DURATION = 75; // 1 min 15 sec default
+const RING_SIZE = 200;
+const RING_STROKE = 10;
+const RING_RADIUS = (RING_SIZE - RING_STROKE) / 2;
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
 // ---- Helper ----
 function formatDuration(totalSeconds: number): string {
@@ -68,7 +80,7 @@ export default function FinishWorkoutModal({
   const [weightText, setWeightText] = useState('');
 
   // Reset state when modal opens
-  React.useEffect(() => {
+  useEffect(() => {
     if (visible) {
       setStep('cardio');
       setWeightText('');
@@ -196,7 +208,7 @@ function CardioStep({
       </Text>
       <Text style={styles.subtitle}>
         {isSquatDay
-          ? '1 минута — запишите количество прыжков'
+          ? 'Запустите таймер на 1 мин 15 сек и прыгайте'
           : 'Запишите время пробежки 3 км'}
       </Text>
 
@@ -282,48 +294,259 @@ function CardioCompletedView({
   );
 }
 
-// ---- Jump rope input (inline in modal) ----
+// ==========================================
+// Jump Rope Input with built-in countdown timer
+// ==========================================
+
+type JumpRopePhase = 'idle' | 'countdown' | 'done';
 
 function JumpRopeInput({ onSave }: { onSave: (count: number) => void }) {
-  const [text, setText] = useState('');
+  const [phase, setPhase] = useState<JumpRopePhase>('idle');
+  const [secondsLeft, setSecondsLeft] = useState(JUMP_TIMER_DURATION);
+  const [countText, setCountText] = useState('');
+
+  // Animated ring progress (1 = full, 0 = empty)
+  const progressAnim = useRef(new Animated.Value(1)).current;
+  const totalDurationRef = useRef(JUMP_TIMER_DURATION);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Clean up interval on unmount
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, []);
+
+  const startTimer = useCallback(() => {
+    const duration = JUMP_TIMER_DURATION;
+    totalDurationRef.current = duration;
+    setSecondsLeft(duration);
+    setPhase('countdown');
+    progressAnim.setValue(1);
+
+    intervalRef.current = setInterval(() => {
+      setSecondsLeft((prev) => {
+        const next = prev - 1;
+        if (next <= 0) {
+          if (intervalRef.current) clearInterval(intervalRef.current);
+          intervalRef.current = null;
+          setPhase('done');
+          return 0;
+        }
+        return next;
+      });
+    }, 1000);
+  }, [progressAnim]);
+
+  const cancelTimer = useCallback(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    setPhase('idle');
+    setSecondsLeft(JUMP_TIMER_DURATION);
+    progressAnim.setValue(1);
+  }, [progressAnim]);
+
+  // Animate ring smoothly whenever secondsLeft changes
+  useEffect(() => {
+    if (phase !== 'countdown') return;
+    const target = secondsLeft / totalDurationRef.current;
+    Animated.timing(progressAnim, {
+      toValue: target,
+      duration: 300,
+      useNativeDriver: false,
+    }).start();
+  }, [secondsLeft, phase, progressAnim]);
+
+  // When timer finishes, animate to 0
+  useEffect(() => {
+    if (phase === 'done') {
+      Animated.timing(progressAnim, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: false,
+      }).start();
+    }
+  }, [phase, progressAnim]);
 
   const handleSave = () => {
-    const count = parseInt(text, 10);
+    const count = parseInt(countText, 10);
     if (!isNaN(count) && count > 0) {
       onSave(count);
     }
   };
 
-  return (
-    <View style={styles.cardioInputSection}>
-      <Text style={styles.cardioInputLabel}>Количество прыжков</Text>
-      <View style={styles.cardioInputRow}>
-        <TextInput
-          style={styles.cardioNumberInput}
-          value={text}
-          onChangeText={setText}
-          placeholder="0"
-          placeholderTextColor={colors.textMuted}
-          keyboardType="number-pad"
-          selectTextOnFocus
-          maxLength={4}
-        />
+  const dashOffset = progressAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [RING_CIRCUMFERENCE, 0],
+  });
+
+  // ---- Phase: IDLE — show start button ----
+  if (phase === 'idle') {
+    return (
+      <View style={styles.jumpRopeSection}>
         <TouchableOpacity
-          style={[
-            styles.saveCardioButton,
-            !text.trim() && styles.saveCardioButtonDisabled,
-          ]}
-          onPress={handleSave}
+          style={styles.startTimerButton}
+          onPress={startTimer}
           activeOpacity={0.7}
-          disabled={!text.trim()}
         >
           <MaterialCommunityIcons
-            name="check"
-            size={24}
-            color={text.trim() ? colors.textOnPrimary : colors.textMuted}
+            name="play-circle"
+            size={32}
+            color={colors.textOnPrimary}
           />
+          <Text style={styles.startTimerText}>
+            Старт таймера ({formatDuration(JUMP_TIMER_DURATION)})
+          </Text>
+        </TouchableOpacity>
+
+        {/* Manual input fallback */}
+        <Text style={styles.orText}>или введите вручную</Text>
+        <View style={styles.cardioInputRow}>
+          <TextInput
+            style={styles.cardioNumberInput}
+            value={countText}
+            onChangeText={setCountText}
+            placeholder="0"
+            placeholderTextColor={colors.textMuted}
+            keyboardType="number-pad"
+            selectTextOnFocus
+            maxLength={4}
+          />
+          <TouchableOpacity
+            style={[
+              styles.saveCardioButton,
+              !countText.trim() && styles.saveCardioButtonDisabled,
+            ]}
+            onPress={handleSave}
+            activeOpacity={0.7}
+            disabled={!countText.trim()}
+          >
+            <MaterialCommunityIcons
+              name="check"
+              size={24}
+              color={countText.trim() ? colors.textOnPrimary : colors.textMuted}
+            />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  // ---- Phase: COUNTDOWN — show ring timer ----
+  if (phase === 'countdown') {
+    return (
+      <View style={styles.jumpRopeSection}>
+        <View style={styles.timerRingContainer}>
+          <Svg width={RING_SIZE} height={RING_SIZE}>
+            {/* Background ring */}
+            <Circle
+              cx={RING_SIZE / 2}
+              cy={RING_SIZE / 2}
+              r={RING_RADIUS}
+              stroke={colors.border}
+              strokeWidth={RING_STROKE}
+              fill="none"
+            />
+            {/* Progress ring */}
+            <AnimatedCircle
+              cx={RING_SIZE / 2}
+              cy={RING_SIZE / 2}
+              r={RING_RADIUS}
+              stroke={colors.info}
+              strokeWidth={RING_STROKE}
+              fill="none"
+              strokeLinecap="round"
+              strokeDasharray={RING_CIRCUMFERENCE}
+              strokeDashoffset={dashOffset}
+              rotation="-90"
+              origin={`${RING_SIZE / 2}, ${RING_SIZE / 2}`}
+            />
+          </Svg>
+          <View style={styles.timerRingCenter}>
+            <Text style={styles.timerTimeText}>
+              {formatDuration(secondsLeft)}
+            </Text>
+            <Text style={styles.timerLabel}>Прыгайте!</Text>
+          </View>
+        </View>
+
+        <TouchableOpacity
+          style={styles.cancelTimerButton}
+          onPress={cancelTimer}
+          activeOpacity={0.7}
+        >
+          <MaterialCommunityIcons
+            name="close"
+            size={20}
+            color={colors.textSecondary}
+          />
+          <Text style={styles.cancelTimerText}>Отмена</Text>
         </TouchableOpacity>
       </View>
+    );
+  }
+
+  // ---- Phase: DONE — timer finished, enter count ----
+  return (
+    <View style={styles.jumpRopeSection}>
+      <View style={styles.timerDoneHeader}>
+        <MaterialCommunityIcons
+          name="check-circle"
+          size={28}
+          color={colors.success}
+        />
+        <Text style={styles.timerDoneText}>Время вышло!</Text>
+      </View>
+
+      <View style={styles.cardioInputSection}>
+        <Text style={styles.cardioInputLabel}>Количество прыжков</Text>
+        <View style={styles.cardioInputRow}>
+          <TextInput
+            style={styles.cardioNumberInput}
+            value={countText}
+            onChangeText={setCountText}
+            placeholder="0"
+            placeholderTextColor={colors.textMuted}
+            keyboardType="number-pad"
+            selectTextOnFocus
+            maxLength={4}
+            autoFocus
+          />
+          <TouchableOpacity
+            style={[
+              styles.saveCardioButton,
+              !countText.trim() && styles.saveCardioButtonDisabled,
+            ]}
+            onPress={handleSave}
+            activeOpacity={0.7}
+            disabled={!countText.trim()}
+          >
+            <MaterialCommunityIcons
+              name="check"
+              size={24}
+              color={countText.trim() ? colors.textOnPrimary : colors.textMuted}
+            />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <TouchableOpacity
+        style={styles.retryTimerButton}
+        onPress={() => {
+          setCountText('');
+          startTimer();
+        }}
+        activeOpacity={0.7}
+      >
+        <MaterialCommunityIcons
+          name="restart"
+          size={18}
+          color={colors.textSecondary}
+        />
+        <Text style={styles.retryTimerText}>Повторить таймер</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -810,6 +1033,92 @@ const styles = StyleSheet.create({
   },
   editButtonText: {
     color: colors.textMuted,
+    fontSize: fontSize.sm,
+  },
+
+  // ---- Jump Rope Timer styles ----
+  jumpRopeSection: {
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+    gap: spacing.md,
+  },
+  startTimerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.info,
+    borderRadius: borderRadius.lg,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+    width: '100%',
+    minHeight: touchTarget.comfortable,
+  },
+  startTimerText: {
+    color: colors.textOnPrimary,
+    fontSize: fontSize.lg,
+    fontWeight: '700',
+  },
+  orText: {
+    color: colors.textMuted,
+    fontSize: fontSize.sm,
+    marginTop: spacing.xs,
+  },
+  timerRingContainer: {
+    width: RING_SIZE,
+    height: RING_SIZE,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  timerRingCenter: {
+    position: 'absolute',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  timerTimeText: {
+    color: colors.text,
+    fontSize: 48,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  timerLabel: {
+    color: colors.info,
+    fontSize: fontSize.md,
+    fontWeight: '600',
+    marginTop: spacing.xs,
+  },
+  cancelTimerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  cancelTimerText: {
+    color: colors.textSecondary,
+    fontSize: fontSize.sm,
+  },
+  timerDoneHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  timerDoneText: {
+    color: colors.success,
+    fontSize: fontSize.lg,
+    fontWeight: '700',
+  },
+  retryTimerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  retryTimerText: {
+    color: colors.textSecondary,
     fontSize: fontSize.sm,
   },
 
