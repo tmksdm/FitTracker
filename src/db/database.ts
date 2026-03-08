@@ -7,24 +7,39 @@ import { CREATE_TABLES_SQL, SEED_DAY_TYPES_SQL, SEED_EXERCISES_SQL } from './sch
 
 let db: SQLite.SQLiteDatabase | null = null;
 
-export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
-  if (db) return db;
-
-  db = await SQLite.openDatabaseAsync('fittracker.db');
+async function openAndInit(): Promise<SQLite.SQLiteDatabase> {
+  const database = await SQLite.openDatabaseAsync('fittracker.db');
 
   // Включаем foreign keys
-  await db.execAsync('PRAGMA foreign_keys = ON;');
+  await database.execAsync('PRAGMA foreign_keys = ON;');
 
   // Создаём таблицы
-  await db.execAsync(CREATE_TABLES_SQL);
+  await database.execAsync(CREATE_TABLES_SQL);
 
   // Заполняем начальные данные
-  await db.execAsync(SEED_DAY_TYPES_SQL);
+  await database.execAsync(SEED_DAY_TYPES_SQL);
 
-  // Seed-упражнения для тестирования
-  await db.execAsync(SEED_EXERCISES_SQL);
+  // Seed-упражнения
+  await database.execAsync(SEED_EXERCISES_SQL);
 
   console.log('Database initialized successfully');
+  return database;
+}
+
+export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
+  if (db) {
+    // Check if the connection is still alive
+    try {
+      await db.getAllAsync('SELECT 1');
+      return db;
+    } catch {
+      // Connection was released — reopen
+      console.log('Database connection lost, reopening...');
+      db = null;
+    }
+  }
+
+  db = await openAndInit();
   return db;
 }
 
