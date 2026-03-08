@@ -18,6 +18,7 @@ import {
   dayTypeRepo,
   exerciseRepo,
   workoutRepo,
+  workoutStateRepo,
   generateId,
 } from '../db';
 import {
@@ -31,6 +32,7 @@ import {
   distributeReps,
   PlannedSet,
 } from '../utils';
+import type { WorkoutSnapshot } from '../db/repositories/workoutStateRepository';
 
 // ---- Types for active workout state ----
 
@@ -76,6 +78,10 @@ export interface WorkoutState {
   treadmillSeconds: number | null;
   isCardioCompleted: boolean;
 
+  // --- Crash resilience ---
+  /** true while restoring from a snapshot (prevents re-persisting during restore) */
+  _isRestoring: boolean;
+
   // --- Actions ---
   startWorkout: (
     dayTypeId: DayTypeId,
@@ -86,6 +92,9 @@ export interface WorkoutState {
   recordEndTime: () => void;
   finishWorkout: (weightAfter: number | null) => Promise<WorkoutSession | null>;
   cancelWorkout: () => Promise<void>;
+
+  // Crash resilience
+  restoreWorkout: (snapshot: WorkoutSnapshot) => void;
 
   // Exercise navigation
   setCurrentExercise: (index: number) => void;
@@ -130,6 +139,40 @@ function getExerciseStatus(sets: ActiveSet[], isTimed: boolean): ExerciseStatus 
   return 'not_started';
 }
 
+/**
+ * Build a snapshot of the current workout state for persistence.
+ */
+function buildSnapshot(state: WorkoutState): WorkoutSnapshot | null {
+  if (!state.session || !state.isActive) return null;
+  return {
+    session: state.session,
+    exercises: state.exercises,
+    currentExerciseIndex: state.currentExerciseIndex,
+    cardioType: state.cardioType,
+    jumpRopeCount: state.jumpRopeCount,
+    treadmillSeconds: state.treadmillSeconds,
+    isCardioCompleted: state.isCardioCompleted,
+    restTimerDefault: state.restTimerDefault,
+  };
+}
+
+/**
+ * Persist the current workout state to SQLite.
+ * Called after every meaningful state change.
+ * Fire-and-forget — errors are logged but don't block the UI.
+ */
+function persistState(state: WorkoutState): void {
+  // Don't persist while we're restoring (avoid feedback loop)
+  if (state._isRestoring) return;
+
+  const snapshot = buildSnapshot(state);
+  if (!snapshot) return;
+
+  workoutStateRepo
+    .saveWorkoutState(snapshot.session.id, snapshot)
+    .catch((err) => console.error('Failed to persist workout state:', err));
+}
+
 export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   // --- Initial state ---
   session: null,
@@ -145,6 +188,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   jumpRopeCount: null,
   treadmillSeconds: null,
   isCardioCompleted: false,
+  _isRestoring: false,
 
   // =======================================
   // START WORKOUT
@@ -262,9 +306,37 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
         treadmillSeconds: null,
         isCardioCompleted: false,
       });
+
+      // Persist initial state
+      persistState(get());
     } catch (error) {
       console.error('Failed to start workout:', error);
     }
+  },
+
+  // =======================================
+  // RESTORE WORKOUT (crash resilience)
+  // =======================================
+  restoreWorkout: (snapshot: WorkoutSnapshot) => {
+    set({
+      _isRestoring: true,
+      session: snapshot.session,
+      isActive: true,
+      exercises: snapshot.exercises,
+      currentExerciseIndex: snapshot.currentExerciseIndex,
+      cardioType: snapshot.cardioType,
+      jumpRopeCount: snapshot.jumpRopeCount,
+      treadmillSeconds: snapshot.treadmillSeconds,
+      isCardioCompleted: snapshot.isCardioCompleted,
+      restTimerDefault: snapshot.restTimerDefault,
+      // Reset transient timer state — don't try to resume timers
+      restTimerSeconds: 0,
+      isRestTimerRunning: false,
+      stopwatchSeconds: 0,
+      isStopwatchRunning: false,
+    });
+    // Mark restoration complete on next tick
+    setTimeout(() => set({ _isRestoring: false }), 0);
   },
 
   // =======================================
@@ -279,6 +351,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
         timeEnd: new Date().toISOString(),
       },
     });
+    persistState(get());
   },
 
   // =======================================
@@ -383,7 +456,10 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
         state.session.id
       );
 
-      // 5. Reset store state
+      // 5. Clear persisted state — workout is done
+      await workoutStateRepo.clearWorkoutState();
+
+      // 6. Reset store state
       set({
         session: finishedSession,
         isActive: false,
@@ -419,6 +495,10 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
         console.error('Failed to delete cancelled session:', error);
       }
     }
+    // Clear persisted state
+    await workoutStateRepo.clearWorkoutState().catch((err) =>
+      console.error('Failed to clear workout state:', err)
+    );
     set({
       session: null,
       isActive: false,
@@ -440,6 +520,8 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   // =======================================
   setCurrentExercise: (index: number) => {
     set({ currentExerciseIndex: index });
+    // Persist navigation change so we restore to the right exercise
+    persistState(get());
   },
 
   getCurrentExercise: () => {
@@ -467,6 +549,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
 
       return { exercises };
     });
+    persistState(get());
   },
 
   updateSetReps: (exerciseIndex: number, setIndex: number, reps: number) => {
@@ -484,6 +567,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
 
       return { exercises };
     });
+    persistState(get());
   },
 
   skipExercise: (exerciseIndex: number) => {
@@ -504,6 +588,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       exercises[exerciseIndex] = exercise;
       return { exercises };
     });
+    persistState(get());
   },
 
   unskipExercise: (exerciseIndex: number) => {
@@ -528,6 +613,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       exercises[exerciseIndex] = exercise;
       return { exercises };
     });
+    persistState(get());
   },
 
   // =======================================
@@ -538,6 +624,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       jumpRopeCount: count,
       isCardioCompleted: true,
     });
+    persistState(get());
   },
 
   saveTreadmill: (seconds: number) => {
@@ -545,6 +632,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       treadmillSeconds: seconds,
       isCardioCompleted: true,
     });
+    persistState(get());
   },
 
   clearCardio: () => {
@@ -553,6 +641,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       treadmillSeconds: null,
       isCardioCompleted: false,
     });
+    persistState(get());
   },
 
   // =======================================
@@ -560,6 +649,8 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   // =======================================
   setRestTimerDefault: (seconds: number) => {
     set({ restTimerDefault: seconds });
+    // Persist so restored workout uses updated default
+    persistState(get());
   },
 
   startRestTimer: () => {
@@ -568,6 +659,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       restTimerSeconds: defaultSeconds,
       isRestTimerRunning: true,
     });
+    // Don't persist timer ticks — transient state
   },
 
   stopRestTimer: () => {

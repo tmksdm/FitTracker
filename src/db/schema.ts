@@ -76,6 +76,15 @@ export const CREATE_TABLES_SQL = `
     FOREIGN KEY (workout_session_id) REFERENCES workout_sessions(id)
   );
 
+  -- Снапшот активной тренировки (crash resilience)
+  -- Хранит JSON-состояние стора, чтобы восстановить тренировку после вылета
+  CREATE TABLE IF NOT EXISTS active_workout_state (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    session_id TEXT NOT NULL,
+    snapshot TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
   -- Индексы для быстрых запросов
   CREATE INDEX IF NOT EXISTS idx_exercises_day_type
     ON exercises(day_type_id);

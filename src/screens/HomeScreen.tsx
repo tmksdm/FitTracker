@@ -2,7 +2,7 @@
 // Экран «Главная» — дашборд
 // ==========================================
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   ScrollView,
   StyleSheet,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -17,6 +18,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppStore } from '../stores/appStore';
 import { useWorkoutStore } from '../stores/workoutStore';
+import { workoutStateRepo } from '../db';
 import { DayTypeCard, LastWorkoutCard, StartWorkoutModal } from '../components';
 import { colors, spacing, fontSize, borderRadius, touchTarget, getDayTypeColor } from '../theme';
 import type { RootStackParamList } from '../navigation/types';
@@ -32,10 +34,14 @@ export default function HomeScreen() {
   const nextDirection = useAppStore((s) => s.nextDirection);
   const lastSession = useAppStore((s) => s.lastSession);
   const refreshNextDayInfo = useAppStore((s) => s.refreshNextDayInfo);
+  const pendingRestore = useAppStore((s) => s.pendingRestore);
+  const clearPendingRestore = useAppStore((s) => s.clearPendingRestore);
 
   // Workout store
   const startWorkout = useWorkoutStore((s) => s.startWorkout);
+  const restoreWorkout = useWorkoutStore((s) => s.restoreWorkout);
   const isWorkoutActive = useWorkoutStore((s) => s.isActive);
+  const cancelWorkout = useWorkoutStore((s) => s.cancelWorkout);
 
   // Local state
   const [showModal, setShowModal] = useState(false);
@@ -47,6 +53,53 @@ export default function HomeScreen() {
       refreshNextDayInfo();
     }, [])
   );
+
+  // Show restore dialog if there's a pending workout from a crash
+  useEffect(() => {
+    if (pendingRestore && !isWorkoutActive) {
+      const dayType = dayTypes.find(
+        (dt) => dt.id === pendingRestore.session.dayTypeId
+      );
+      const dayName = dayType?.nameRu ?? 'Тренировка';
+
+      // Count completed exercises for context
+      const done = pendingRestore.exercises.filter(
+        (e) => e.status === 'completed'
+      ).length;
+      const total = pendingRestore.exercises.length;
+
+      Alert.alert(
+        'Незавершённая тренировка',
+        `${dayName} — выполнено ${done} из ${total} упражнений.\n\nПродолжить с того места, где остановились?`,
+        [
+          {
+            text: 'Удалить',
+            style: 'destructive',
+            onPress: async () => {
+              // Delete the orphaned session and clear state
+              try {
+                await cancelWorkout();
+              } catch {
+                // cancelWorkout handles cleanup internally
+              }
+              clearPendingRestore();
+              await refreshNextDayInfo();
+            },
+          },
+          {
+            text: 'Продолжить',
+            style: 'default',
+            onPress: () => {
+              restoreWorkout(pendingRestore);
+              clearPendingRestore();
+              navigation.navigate('ActiveWorkout');
+            },
+          },
+        ],
+        { cancelable: false }
+      );
+    }
+  }, [pendingRestore, isWorkoutActive]);
 
   // Pull-to-refresh
   const handleRefresh = async () => {

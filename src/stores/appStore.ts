@@ -10,8 +10,9 @@ import {
   Exercise,
   WorkoutSession,
 } from '../types';
-import { dayTypeRepo, exerciseRepo, workoutRepo } from '../db';
+import { dayTypeRepo, exerciseRepo, workoutRepo, workoutStateRepo } from '../db';
 import { getDirectionForNextSession } from '../utils';
+import type { WorkoutSnapshot } from '../db/repositories/workoutStateRepository';
 
 export interface AppState {
   // --- Data ---
@@ -22,11 +23,16 @@ export interface AppState {
   isLoading: boolean;
   isInitialized: boolean;
 
+  // --- Crash resilience ---
+  /** If non-null, there's a saved workout to restore */
+  pendingRestore: WorkoutSnapshot | null;
+
   // --- Actions ---
   initialize: () => Promise<void>;
   refreshNextDayInfo: () => Promise<void>;
   getExercisesForDayType: (dayTypeId: DayTypeId) => Promise<Exercise[]>;
   getRecentSessions: (limit?: number) => Promise<WorkoutSession[]>;
+  clearPendingRestore: () => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -37,6 +43,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   lastSession: null,
   isLoading: false,
   isInitialized: false,
+  pendingRestore: null,
 
   // Load all initial data from DB
   initialize: async () => {
@@ -54,6 +61,27 @@ export const useAppStore = create<AppState>((set, get) => ({
         lastSession?.direction ?? null
       );
 
+      // Check for saved workout state (crash resilience)
+      let pendingRestore: WorkoutSnapshot | null = null;
+      try {
+        const snapshot = await workoutStateRepo.loadWorkoutState();
+        if (snapshot) {
+          // Verify the session still exists in DB (wasn't deleted)
+          const sessionExists = await workoutRepo.getWorkoutSessionById(
+            snapshot.session.id
+          );
+          if (sessionExists && !sessionExists.timeEnd) {
+            // Session exists and is unfinished — offer restore
+            pendingRestore = snapshot;
+          } else {
+            // Session was finished or deleted — clean up stale state
+            await workoutStateRepo.clearWorkoutState();
+          }
+        }
+      } catch (err) {
+        console.error('Failed to check for saved workout state:', err);
+      }
+
       set({
         dayTypes,
         nextDayTypeId,
@@ -61,6 +89,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         lastSession,
         isLoading: false,
         isInitialized: true,
+        pendingRestore,
       });
     } catch (error) {
       console.error('Failed to initialize app store:', error);
@@ -94,5 +123,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Fetch recent workout sessions
   getRecentSessions: async (limit?: number) => {
     return workoutRepo.getAllSessions(limit);
+  },
+
+  // Clear pending restore (user declined to restore)
+  clearPendingRestore: () => {
+    set({ pendingRestore: null });
   },
 }));
