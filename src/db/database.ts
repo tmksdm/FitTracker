@@ -16,11 +16,19 @@ async function openAndInit(): Promise<SQLite.SQLiteDatabase> {
   // Создаём таблицы
   await database.execAsync(CREATE_TABLES_SQL);
 
-  // Заполняем начальные данные
+  // Заполняем начальные данные — day_types всегда нужны (INSERT OR IGNORE безопасен)
   await database.execAsync(SEED_DAY_TYPES_SQL);
 
-  // Seed-упражнения
-  await database.execAsync(SEED_EXERCISES_SQL);
+  // Seed-упражнения — ТОЛЬКО если таблица exercises пуста.
+  // Это предотвращает воскрешение удалённых/замененных упражнений
+  // после импорта бэкапа или ручной настройки.
+  const row = await database.getFirstAsync<{ cnt: number }>(
+    'SELECT COUNT(*) as cnt FROM exercises'
+  );
+  if (row?.cnt === 0) {
+    await database.execAsync(SEED_EXERCISES_SQL);
+    console.log('Seeded default exercises (first run)');
+  }
 
   console.log('Database initialized successfully');
   return database;
