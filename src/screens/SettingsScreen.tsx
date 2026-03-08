@@ -7,6 +7,7 @@ import {
   View,
   Text,
   TouchableOpacity,
+  ScrollView,  
   StyleSheet,
   Alert,
   ActivityIndicator,
@@ -515,7 +516,7 @@ export default function SettingsScreen() {
         <Text style={styles.title}>Настройки</Text>
       </View>
 
-      <View style={styles.content}>
+      <ScrollView style={styles.content} contentContainerStyle={styles.contentInner}>
         {/* Exercise editors */}
         <Section title="Упражнения">
           <MenuItem
@@ -593,7 +594,7 @@ export default function SettingsScreen() {
             destructive
           />
         </Section>
-      </View>
+      </ScrollView>
 
       {/* Import preview modal */}
       <ImportPreviewModal
@@ -626,8 +627,11 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  contentInner: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
+    paddingBottom: spacing.xxl * 2,
     gap: spacing.xl,
   },
 });
