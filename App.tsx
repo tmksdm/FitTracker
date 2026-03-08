@@ -7,7 +7,6 @@ import { StatusBar } from 'expo-status-bar';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { deactivateKeepAwake } from 'expo-keep-awake';
 import AppNavigator from './src/navigation/AppNavigator';
 import { useAppStore } from './src/stores';
 import { colors } from './src/theme';
@@ -31,10 +30,6 @@ export default function App() {
   const initialize = useAppStore((s) => s.initialize);
   const isInitialized = useAppStore((s) => s.isInitialized);
   const isLoading = useAppStore((s) => s.isLoading);
-
-  useEffect(() => {
-  deactivateKeepAwake();
-}, []);
 
   useEffect(() => {
     initialize();
